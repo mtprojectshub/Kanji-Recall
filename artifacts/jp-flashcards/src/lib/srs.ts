@@ -1,13 +1,15 @@
 export type SRSStage = 'apprentice1' | 'apprentice2' | 'apprentice3' | 'apprentice4' | 'guru1' | 'guru2' | 'master' | 'enlightened' | 'burned';
 
+export type LessonDirection = 'jp-en' | 'en-jp';
+
 export interface Flashcard {
   id: string;
   japanese: string;
-  reading: string; // hiragana reading
+  reading: string;
   english: string;
   partOfSpeech?: string;
   srsStage: SRSStage;
-  nextReview: number; // unix timestamp ms
+  nextReview: number;
   totalReviews: number;
   correctReviews: number;
   incorrectReviews: number;
@@ -25,15 +27,15 @@ export interface ReviewSession {
 }
 
 const STAGE_INTERVALS: Record<SRSStage, number> = {
-  apprentice1: 4 * 60 * 60 * 1000, // 4 hours
-  apprentice2: 8 * 60 * 60 * 1000, // 8 hours
-  apprentice3: 24 * 60 * 60 * 1000, // 1 day
-  apprentice4: 2 * 24 * 60 * 60 * 1000, // 2 days
-  guru1: 7 * 24 * 60 * 60 * 1000, // 1 week
-  guru2: 14 * 24 * 60 * 60 * 1000, // 2 weeks
-  master: 30 * 24 * 60 * 60 * 1000, // 1 month (approx)
-  enlightened: 4 * 30 * 24 * 60 * 60 * 1000, // 4 months (approx)
-  burned: 0, // never
+  apprentice1: 4 * 60 * 60 * 1000,
+  apprentice2: 8 * 60 * 60 * 1000,
+  apprentice3: 24 * 60 * 60 * 1000,
+  apprentice4: 2 * 24 * 60 * 60 * 1000,
+  guru1: 7 * 24 * 60 * 60 * 1000,
+  guru2: 14 * 24 * 60 * 60 * 1000,
+  master: 30 * 24 * 60 * 60 * 1000,
+  enlightened: 4 * 30 * 24 * 60 * 60 * 1000,
+  burned: 0,
 };
 
 const STAGE_ORDER: SRSStage[] = [
@@ -45,7 +47,7 @@ const STAGE_ORDER: SRSStage[] = [
   'guru2',
   'master',
   'enlightened',
-  'burned'
+  'burned',
 ];
 
 export function getNextStage(current: SRSStage, correct: boolean): SRSStage {
@@ -53,11 +55,9 @@ export function getNextStage(current: SRSStage, correct: boolean): SRSStage {
   if (correct) {
     if (current === 'burned') return 'burned';
     return STAGE_ORDER[currentIndex + 1];
-  } else {
-    // Drop back 2 stages, min apprentice1
-    const newIndex = Math.max(0, currentIndex - 2);
-    return STAGE_ORDER[newIndex];
   }
+  const newIndex = Math.max(0, currentIndex - 2);
+  return STAGE_ORDER[newIndex];
 }
 
 export function calculateNextReview(stage: SRSStage): number {
@@ -68,7 +68,7 @@ export function calculateNextReview(stage: SRSStage): number {
 export function processReview(card: Flashcard, correct: boolean): Flashcard {
   const nextStage = getNextStage(card.srsStage, correct);
   const nextReview = calculateNextReview(nextStage);
-  
+
   return {
     ...card,
     srsStage: nextStage,
@@ -95,4 +95,23 @@ export function getStageName(stage: SRSStage): string {
   if (stage === 'master') return 'Master';
   if (stage === 'enlightened') return 'Enlightened';
   return 'Burned';
+}
+
+export function getLessonPrompt(card: Flashcard, direction: LessonDirection): { prompt: string; answer: string; reading?: string } {
+  if (direction === 'en-jp') {
+    return {
+      prompt: card.english,
+      answer: card.japanese,
+      reading: card.reading,
+    };
+  }
+  return {
+    prompt: card.japanese,
+    answer: card.english,
+    reading: card.reading,
+  };
+}
+
+export function normalizeAnswer(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
