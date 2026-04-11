@@ -1,4 +1,4 @@
-import { Flashcard, ReviewSession, SRSStage } from './srs';
+import { Flashcard, ReviewSession } from './srs';
 
 const CARDS_KEY = 'hana_srs_cards';
 const SESSIONS_KEY = 'hana_srs_sessions';
@@ -24,12 +24,14 @@ export function addCard(card: Omit<Flashcard, 'id' | 'srsStage' | 'nextReview' |
     ...card,
     id: crypto.randomUUID(),
     srsStage: 'apprentice1',
-    nextReview: 0, // Ready for lesson immediately
+    nextReview: 0,
     totalReviews: 0,
     correctReviews: 0,
     incorrectReviews: 0,
     streak: 0,
     createdAt: Date.now(),
+    lessonDirectionsCompleted: [],
+    lessonComplete: false,
   };
   cards.push(newCard);
   saveCards(cards);
@@ -80,5 +82,5 @@ export function getDueCards(): Flashcard[] {
 }
 
 export function getLessonCards(): Flashcard[] {
-  return getCards().filter(c => c.nextReview === 0);
+  return getCards().filter(c => !c.lessonComplete);
 }

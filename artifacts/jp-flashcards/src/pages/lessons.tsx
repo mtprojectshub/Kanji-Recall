@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Flashcard, LessonDirection, getLessonPrompt, processReview } from "@/lib/srs";
+import { Flashcard, LessonDirection, getLessonPrompt, markLessonDirectionComplete, normalizeAnswer } from "@/lib/srs";
 import { getLessonCards, updateCard } from "@/lib/storage";
 
 export default function Lessons() {
@@ -48,8 +48,18 @@ export default function Lessons() {
   }
 
   const handleNext = (knew: boolean) => {
-    const updated = processReview(currentCard, knew);
-    updateCard(updated);
+    const answerMatches = normalizeAnswer(lesson?.answer ?? "");
+    const updated = markLessonDirectionComplete(currentCard, direction);
+    const shouldPromoteToReview = updated.lessonComplete;
+
+    if (shouldPromoteToReview) {
+      updateCard({
+        ...updated,
+        nextReview: Date.now(),
+      });
+    } else {
+      updateCard(updated);
+    }
 
     if (currentIndex < cards.length - 1) {
       setCurrentIndex((prev) => prev + 1);

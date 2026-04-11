@@ -16,6 +16,8 @@ export interface Flashcard {
   streak: number;
   lastReviewed?: number;
   createdAt: number;
+  lessonDirectionsCompleted?: LessonDirection[];
+  lessonComplete?: boolean;
 }
 
 export interface ReviewSession {
@@ -114,4 +116,27 @@ export function getLessonPrompt(card: Flashcard, direction: LessonDirection): { 
 
 export function normalizeAnswer(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function getCompletedLessonDirections(card: Flashcard): LessonDirection[] {
+  return card.lessonDirectionsCompleted ?? [];
+}
+
+export function isLessonComplete(card: Flashcard): boolean {
+  return card.lessonComplete ?? false;
+}
+
+export function markLessonDirectionComplete(card: Flashcard, direction: LessonDirection): Flashcard {
+  const completed = new Set(getCompletedLessonDirections(card));
+  completed.add(direction);
+  const lessonDirectionsCompleted = Array.from(completed);
+  const lessonComplete = lessonDirectionsCompleted.includes('jp-en') && lessonDirectionsCompleted.includes('en-jp');
+
+  return {
+    ...card,
+    lessonDirectionsCompleted,
+    lessonComplete,
+    nextReview: lessonComplete ? Date.now() : 0,
+    srsStage: lessonComplete ? 'apprentice1' : card.srsStage,
+  };
 }
