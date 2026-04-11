@@ -8,3 +8,32 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ExtractVocabularyBody {
+  /** Base64-encoded image data */
+  imageBase64: string;
+  /** MIME type of the image (e.g. image/jpeg, image/png) */
+  mimeType: string;
+}
+
+export interface VocabularyPair {
+  /** Japanese text (kanji/kana) */
+  japanese: string;
+  /** Reading in hiragana/katakana (optional) */
+  reading?: string;
+  /** English meaning */
+  english: string;
+  /** Part of speech (noun, verb, adjective, etc.) */
+  partOfSpeech?: string;
+}
+
+export interface ExtractVocabularyResponse {
+  pairs: VocabularyPair[];
+  /** Raw text extracted from the image */
+  rawText: string;
+}
+
+export interface ErrorResponse {
+  error: string;
+  message: string;
+}

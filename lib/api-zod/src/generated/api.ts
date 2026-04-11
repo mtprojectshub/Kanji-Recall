@@ -14,3 +14,32 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Uses AI vision to extract Japanese/English vocabulary pairs from an uploaded image
+ * @summary Extract vocabulary from image
+ */
+export const ExtractVocabularyBody = zod.object({
+  imageBase64: zod.string().describe("Base64-encoded image data"),
+  mimeType: zod
+    .string()
+    .describe("MIME type of the image (e.g. image\/jpeg, image\/png)"),
+});
+
+export const ExtractVocabularyResponse = zod.object({
+  pairs: zod.array(
+    zod.object({
+      japanese: zod.string().describe("Japanese text (kanji\/kana)"),
+      reading: zod
+        .string()
+        .optional()
+        .describe("Reading in hiragana\/katakana (optional)"),
+      english: zod.string().describe("English meaning"),
+      partOfSpeech: zod
+        .string()
+        .optional()
+        .describe("Part of speech (noun, verb, adjective, etc.)"),
+    }),
+  ),
+  rawText: zod.string().describe("Raw text extracted from the image"),
+});

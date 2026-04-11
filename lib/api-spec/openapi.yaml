@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: ocr
+    description: OCR and text extraction operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /ocr/extract:
+    post:
+      operationId: extractVocabulary
+      tags: [ocr]
+      summary: Extract vocabulary from image
+      description: Uses AI vision to extract Japanese/English vocabulary pairs from an uploaded image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtractVocabularyBody"
+      responses:
+        "200":
+          description: Extracted vocabulary pairs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractVocabularyResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +66,56 @@ components:
           type: string
       required:
         - status
-
+    ExtractVocabularyBody:
+      type: object
+      properties:
+        imageBase64:
+          type: string
+          description: Base64-encoded image data
+        mimeType:
+          type: string
+          description: MIME type of the image (e.g. image/jpeg, image/png)
+      required:
+        - imageBase64
+        - mimeType
+    VocabularyPair:
+      type: object
+      properties:
+        japanese:
+          type: string
+          description: Japanese text (kanji/kana)
+        reading:
+          type: string
+          description: Reading in hiragana/katakana (optional)
+        english:
+          type: string
+          description: English meaning
+        partOfSpeech:
+          type: string
+          description: Part of speech (noun, verb, adjective, etc.)
+      required:
+        - japanese
+        - english
+    ExtractVocabularyResponse:
+      type: object
+      properties:
+        pairs:
+          type: array
+          items:
+            $ref: "#/components/schemas/VocabularyPair"
+        rawText:
+          type: string
+          description: Raw text extracted from the image
+      required:
+        - pairs
+        - rawText
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message
