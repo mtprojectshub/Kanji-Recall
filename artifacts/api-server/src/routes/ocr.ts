@@ -4,7 +4,7 @@ import { ExtractVocabularyBody } from "@workspace/api-zod";
 
 const router = Router();
 
-router.post("/ocr/extract", async (req, res) => {
+router.post("/extract", async (req, res) => {
   const parsed = ExtractVocabularyBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "validation_error", message: parsed.error.message });

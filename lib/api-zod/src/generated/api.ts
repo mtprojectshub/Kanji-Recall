@@ -8,7 +8,6 @@
 import * as zod from "zod";
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -16,30 +15,186 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * Uses AI vision to extract Japanese/English vocabulary pairs from an uploaded image
  * @summary Extract vocabulary from image
  */
 export const ExtractVocabularyBody = zod.object({
-  imageBase64: zod.string().describe("Base64-encoded image data"),
-  mimeType: zod
-    .string()
-    .describe("MIME type of the image (e.g. image\/jpeg, image\/png)"),
+  imageBase64: zod.string(),
+  mimeType: zod.string(),
 });
 
 export const ExtractVocabularyResponse = zod.object({
   pairs: zod.array(
     zod.object({
-      japanese: zod.string().describe("Japanese text (kanji\/kana)"),
-      reading: zod
-        .string()
-        .optional()
-        .describe("Reading in hiragana\/katakana (optional)"),
-      english: zod.string().describe("English meaning"),
-      partOfSpeech: zod
-        .string()
-        .optional()
-        .describe("Part of speech (noun, verb, adjective, etc.)"),
+      japanese: zod.string(),
+      reading: zod.string().optional(),
+      english: zod.string(),
+      partOfSpeech: zod.string().optional(),
     }),
   ),
-  rawText: zod.string().describe("Raw text extracted from the image"),
+  rawText: zod.string(),
+});
+
+/**
+ * @summary List all flashcards
+ */
+export const ListCardsResponseItem = zod.object({
+  id: zod.string(),
+  japanese: zod.string(),
+  reading: zod.string(),
+  english: zod.string(),
+  partOfSpeech: zod.string().nullish(),
+  srsStage: zod.string(),
+  nextReview: zod.number(),
+  totalReviews: zod.number(),
+  correctReviews: zod.number(),
+  incorrectReviews: zod.number(),
+  streak: zod.number(),
+  lastReviewed: zod.number().nullish(),
+  lessonDirectionsCompleted: zod.array(zod.string()),
+  lessonComplete: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const ListCardsResponse = zod.array(ListCardsResponseItem);
+
+/**
+ * @summary Create a new flashcard
+ */
+export const CreateCardBody = zod.object({
+  japanese: zod.string(),
+  reading: zod.string().optional(),
+  english: zod.string(),
+  partOfSpeech: zod.string().nullish(),
+});
+
+/**
+ * @summary Get cards in lesson queue (not yet introduced to SRS)
+ */
+export const GetLessonCardsResponseItem = zod.object({
+  id: zod.string(),
+  japanese: zod.string(),
+  reading: zod.string(),
+  english: zod.string(),
+  partOfSpeech: zod.string().nullish(),
+  srsStage: zod.string(),
+  nextReview: zod.number(),
+  totalReviews: zod.number(),
+  correctReviews: zod.number(),
+  incorrectReviews: zod.number(),
+  streak: zod.number(),
+  lastReviewed: zod.number().nullish(),
+  lessonDirectionsCompleted: zod.array(zod.string()),
+  lessonComplete: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const GetLessonCardsResponse = zod.array(GetLessonCardsResponseItem);
+
+/**
+ * @summary Get cards due for review
+ */
+export const GetDueCardsResponseItem = zod.object({
+  id: zod.string(),
+  japanese: zod.string(),
+  reading: zod.string(),
+  english: zod.string(),
+  partOfSpeech: zod.string().nullish(),
+  srsStage: zod.string(),
+  nextReview: zod.number(),
+  totalReviews: zod.number(),
+  correctReviews: zod.number(),
+  incorrectReviews: zod.number(),
+  streak: zod.number(),
+  lastReviewed: zod.number().nullish(),
+  lessonDirectionsCompleted: zod.array(zod.string()),
+  lessonComplete: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const GetDueCardsResponse = zod.array(GetDueCardsResponseItem);
+
+/**
+ * @summary Update a flashcard (SRS state, edits)
+ */
+export const UpdateCardParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateCardBody = zod.object({
+  japanese: zod.string().optional(),
+  reading: zod.string().optional(),
+  english: zod.string().optional(),
+  partOfSpeech: zod.string().nullish(),
+  srsStage: zod.string().optional(),
+  nextReview: zod.number().optional(),
+  totalReviews: zod.number().optional(),
+  correctReviews: zod.number().optional(),
+  incorrectReviews: zod.number().optional(),
+  streak: zod.number().optional(),
+  lastReviewed: zod.number().nullish(),
+  lessonDirectionsCompleted: zod.array(zod.string()).optional(),
+  lessonComplete: zod.boolean().optional(),
+});
+
+export const UpdateCardResponse = zod.object({
+  id: zod.string(),
+  japanese: zod.string(),
+  reading: zod.string(),
+  english: zod.string(),
+  partOfSpeech: zod.string().nullish(),
+  srsStage: zod.string(),
+  nextReview: zod.number(),
+  totalReviews: zod.number(),
+  correctReviews: zod.number(),
+  incorrectReviews: zod.number(),
+  streak: zod.number(),
+  lastReviewed: zod.number().nullish(),
+  lessonDirectionsCompleted: zod.array(zod.string()),
+  lessonComplete: zod.boolean(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a flashcard
+ */
+export const DeleteCardParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+/**
+ * @summary List review sessions
+ */
+export const ListSessionsResponseItem = zod.object({
+  id: zod.string(),
+  date: zod.number(),
+  cardsReviewed: zod.number(),
+  correct: zod.number(),
+  incorrect: zod.number(),
+  createdAt: zod.string(),
+});
+export const ListSessionsResponse = zod.array(ListSessionsResponseItem);
+
+/**
+ * @summary Record a review session
+ */
+export const CreateSessionBody = zod.object({
+  date: zod.number(),
+  cardsReviewed: zod.number(),
+  correct: zod.number(),
+  incorrect: zod.number(),
+});
+
+/**
+ * @summary Get dashboard summary
+ */
+export const GetDashboardResponse = zod.object({
+  lessonsCount: zod.number(),
+  reviewsDueCount: zod.number(),
+  totalCards: zod.number(),
+  burnedCount: zod.number(),
+  allTimeAccuracy: zod.number(),
+  totalReviews: zod.number(),
+  stageCounts: zod.array(
+    zod.object({
+      stage: zod.string(),
+      count: zod.number(),
+    }),
+  ),
 });

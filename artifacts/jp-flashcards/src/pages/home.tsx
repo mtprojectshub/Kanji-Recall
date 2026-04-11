@@ -1,33 +1,31 @@
-import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { getDueCards, getLessonCards, getCards } from "@/lib/storage";
-import { Flashcard } from "@/lib/srs";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useGetDashboard } from "@workspace/api-client-react";
 
 export default function Home() {
-  const [dueCards, setDueCards] = useState<Flashcard[]>([]);
-  const [lessonCards, setLessonCards] = useState<Flashcard[]>([]);
-  const [allCards, setAllCards] = useState<Flashcard[]>([]);
+  const { data: summary, isLoading } = useGetDashboard();
 
-  useEffect(() => {
-    setDueCards(getDueCards());
-    setLessonCards(getLessonCards());
-    setAllCards(getCards());
-  }, []);
-
-  const totalReviews = allCards.reduce((acc, c) => acc + c.totalReviews, 0);
-  const correctReviews = allCards.reduce((acc, c) => acc + c.correctReviews, 0);
-  const accuracy = totalReviews > 0 ? Math.round((correctReviews / totalReviews) * 100) : 0;
+  if (isLoading || !summary) {
+    return (
+      <Layout>
+        <div className="space-y-8 animate-pulse">
+          <div className="h-20 bg-muted rounded-md w-full max-w-md"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="h-48 bg-muted rounded-xl"></div>
+            <div className="h-48 bg-muted rounded-xl"></div>
+          </div>
+          <div className="h-32 bg-muted rounded-xl"></div>
+          <div className="h-24 bg-muted rounded-xl"></div>
+        </div>
+      </Layout>
+    );
+  }
 
   const getCountByStage = (stagePrefix: string) => {
-    return allCards.filter(c => c.srsStage.startsWith(stagePrefix)).length;
-  };
-
-  const getBurnedCount = () => {
-    return allCards.filter(c => c.srsStage === 'burned').length;
+    return summary.stageCounts.filter((s) => s.stage.startsWith(stagePrefix)).reduce((acc, curr) => acc + curr.count, 0);
   };
 
   return (
@@ -44,12 +42,12 @@ export default function Home() {
               <span className="text-9xl font-serif">学</span>
             </div>
             <CardContent className="p-6 relative z-10 flex flex-col items-center justify-center text-center space-y-4">
-              <div className="text-5xl font-serif font-bold">{dueCards.length}</div>
+              <div className="text-5xl font-serif font-bold">{summary.reviewsDueCount}</div>
               <div className="text-primary-foreground/80 font-medium tracking-wider uppercase text-sm">REVIEWS DUE</div>
               <Link href="/review" className="w-full">
                 <Button 
                   className="w-full bg-white text-primary hover:bg-white/90 hover-elevate transition-all" 
-                  disabled={dueCards.length === 0}
+                  disabled={summary.reviewsDueCount === 0}
                   size="lg"
                 >
                   Start Reviews
@@ -60,12 +58,12 @@ export default function Home() {
 
           <Card className="bg-secondary/10 border-none shadow-sm relative overflow-hidden">
             <CardContent className="p-6 relative z-10 flex flex-col items-center justify-center text-center space-y-4 h-full">
-              <div className="text-5xl font-serif font-bold text-secondary">{lessonCards.length}</div>
+              <div className="text-5xl font-serif font-bold text-secondary">{summary.lessonsCount}</div>
               <div className="text-muted-foreground font-medium tracking-wider uppercase text-sm">NEW LESSONS</div>
               <Link href="/lessons" className="w-full">
                 <Button 
                   className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/90 hover-elevate transition-all" 
-                  disabled={lessonCards.length === 0}
+                  disabled={summary.lessonsCount === 0}
                   size="lg"
                 >
                   Start Lessons
@@ -96,7 +94,7 @@ export default function Home() {
             </div>
             <div className="flex flex-col items-center p-4 bg-card rounded-lg border shadow-sm">
               <Badge className="bg-srs-burned mb-2 hover:bg-srs-burned">Burned</Badge>
-              <span className="text-2xl font-bold">{getBurnedCount()}</span>
+              <span className="text-2xl font-bold">{summary.burnedCount}</span>
             </div>
           </div>
         </div>
@@ -105,11 +103,11 @@ export default function Home() {
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <div className="text-sm text-muted-foreground uppercase tracking-wider font-medium">All Time Accuracy</div>
-              <div className="text-3xl font-serif font-bold mt-1">{accuracy}%</div>
+              <div className="text-3xl font-serif font-bold mt-1">{summary.allTimeAccuracy}%</div>
             </div>
             <div className="text-right">
               <div className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Total Reviews</div>
-              <div className="text-3xl font-serif font-bold mt-1">{totalReviews}</div>
+              <div className="text-3xl font-serif font-bold mt-1">{summary.totalReviews}</div>
             </div>
           </CardContent>
         </Card>

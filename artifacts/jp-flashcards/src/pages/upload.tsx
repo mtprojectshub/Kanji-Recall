@@ -1,12 +1,17 @@
 import { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useExtractVocabulary } from "@workspace/api-client-react";
+import { 
+  useExtractVocabulary, 
+  useCreateCard,
+  getGetLessonCardsQueryKey,
+  getGetDashboardQueryKey
+} from "@workspace/api-client-react";
 import { UploadCloud, Check, X, Plus } from "lucide-react";
-import { addCard } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -22,8 +27,10 @@ export default function Upload() {
   const [dragActive, setDragActive] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [pairs, setPairs] = useState<EditPair[]>([]);
-  const { mutate: extractVocab, isPending } = useExtractVocabulary();
+  const { mutate: extractVocab, isPending: isExtracting } = useExtractVocabulary();
+  const createCard = useCreateCard();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -87,21 +94,30 @@ export default function Upload() {
     setPairs(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
-  const handleAddSelected = () => {
+  const handleAddSelected = async () => {
     const selected = pairs.filter(p => p.selected && p.japanese && p.english);
     if (selected.length === 0) return;
 
-    selected.forEach(p => {
-      addCard({
-        japanese: p.japanese,
-        reading: p.reading,
-        english: p.english
-      });
-    });
-
-    toast({ title: "Added to deck", description: `Added ${selected.length} new words to your lessons queue.` });
-    setPairs([]);
-    setImagePreview(null);
+    try {
+      for (const p of selected) {
+        await createCard.mutateAsync({
+          data: {
+            japanese: p.japanese,
+            reading: p.reading || "",
+            english: p.english
+          }
+        });
+      }
+      
+      queryClient.invalidateQueries({ queryKey: getGetLessonCardsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+      
+      toast({ title: "Added to deck", description: `Added ${selected.length} new words to your lessons queue.` });
+      setPairs([]);
+      setImagePreview(null);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to add some words.", variant: "destructive" });
+    }
   };
 
   const addNewPairManually = () => {
@@ -150,7 +166,7 @@ export default function Upload() {
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-serif font-semibold flex items-center gap-2">
-                {isPending ? (
+                {isExtracting ? (
                   <>Extracting<span className="animate-pulse">...</span></>
                 ) : (
                   <>Extracted Words</>
@@ -161,20 +177,20 @@ export default function Upload() {
               </Button>
             </div>
 
-            {isPending && (
+            {isExtracting && (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
                 <p>Analyzing ink...</p>
               </div>
             )}
 
-            {!isPending && pairs.length === 0 && (
+            {!isExtracting && pairs.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 No vocabulary detected. Try another image or add manually.
               </div>
             )}
 
-            {!isPending && pairs.length > 0 && (
+            {!isExtracting && pairs.length > 0 && (
               <div className="space-y-4">
                 {pairs.map(pair => (
                   <Card key={pair.id} className={`transition-all ${pair.selected ? 'border-primary/30 shadow-sm' : 'opacity-60'}`}>
@@ -223,8 +239,9 @@ export default function Upload() {
                   <Button variant="outline" onClick={addNewPairManually}>
                     <Plus className="w-4 h-4 mr-2" /> Add Row
                   </Button>
-                  <Button onClick={handleAddSelected} size="lg" className="bg-primary hover:bg-primary/90">
-                    <Check className="w-4 h-4 mr-2" /> Add {pairs.filter(p => p.selected).length} Words to Deck
+                  <Button onClick={handleAddSelected} size="lg" className="bg-primary hover:bg-primary/90" disabled={createCard.isPending}>
+                    {createCard.isPending ? <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                    Add {pairs.filter(p => p.selected).length} Words to Deck
                   </Button>
                 </div>
               </div>

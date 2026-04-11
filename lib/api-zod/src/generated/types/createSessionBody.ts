@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ExtractVocabularyBody {
-  imageBase64: string;
-  mimeType: string;
+export interface CreateSessionBody {
+  date: number;
+  cardsReviewed: number;
+  correct: number;
+  incorrect: number;
 }

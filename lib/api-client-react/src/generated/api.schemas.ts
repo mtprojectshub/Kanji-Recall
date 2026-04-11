@@ -9,31 +9,101 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface ErrorResponse {
+  error: string;
+  message: string;
+}
+
 export interface ExtractVocabularyBody {
-  /** Base64-encoded image data */
   imageBase64: string;
-  /** MIME type of the image (e.g. image/jpeg, image/png) */
   mimeType: string;
 }
 
 export interface VocabularyPair {
-  /** Japanese text (kanji/kana) */
   japanese: string;
-  /** Reading in hiragana/katakana (optional) */
   reading?: string;
-  /** English meaning */
   english: string;
-  /** Part of speech (noun, verb, adjective, etc.) */
   partOfSpeech?: string;
 }
 
 export interface ExtractVocabularyResponse {
   pairs: VocabularyPair[];
-  /** Raw text extracted from the image */
   rawText: string;
 }
 
-export interface ErrorResponse {
-  error: string;
-  message: string;
+export interface FlashcardResponse {
+  id: string;
+  japanese: string;
+  reading: string;
+  english: string;
+  /** @nullable */
+  partOfSpeech?: string | null;
+  srsStage: string;
+  nextReview: number;
+  totalReviews: number;
+  correctReviews: number;
+  incorrectReviews: number;
+  streak: number;
+  /** @nullable */
+  lastReviewed?: number | null;
+  lessonDirectionsCompleted: string[];
+  lessonComplete: boolean;
+  createdAt: string;
+}
+
+export interface CreateCardBody {
+  japanese: string;
+  reading?: string;
+  english: string;
+  /** @nullable */
+  partOfSpeech?: string | null;
+}
+
+export interface UpdateCardBody {
+  japanese?: string;
+  reading?: string;
+  english?: string;
+  /** @nullable */
+  partOfSpeech?: string | null;
+  srsStage?: string;
+  nextReview?: number;
+  totalReviews?: number;
+  correctReviews?: number;
+  incorrectReviews?: number;
+  streak?: number;
+  /** @nullable */
+  lastReviewed?: number | null;
+  lessonDirectionsCompleted?: string[];
+  lessonComplete?: boolean;
+}
+
+export interface ReviewSessionResponse {
+  id: string;
+  date: number;
+  cardsReviewed: number;
+  correct: number;
+  incorrect: number;
+  createdAt: string;
+}
+
+export interface CreateSessionBody {
+  date: number;
+  cardsReviewed: number;
+  correct: number;
+  incorrect: number;
+}
+
+export interface StageCount {
+  stage: string;
+  count: number;
+}
+
+export interface DashboardSummary {
+  lessonsCount: number;
+  reviewsDueCount: number;
+  totalCards: number;
+  burnedCount: number;
+  allTimeAccuracy: number;
+  totalReviews: number;
+  stageCounts: StageCount[];
 }

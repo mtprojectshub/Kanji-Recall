@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ExtractVocabularyBody {
-  imageBase64: string;
-  mimeType: string;
+export interface StageCount {
+  stage: string;
+  count: number;
 }

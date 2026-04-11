@@ -17,10 +17,16 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  CreateCardBody,
+  CreateSessionBody,
+  DashboardSummary,
   ErrorResponse,
   ExtractVocabularyBody,
   ExtractVocabularyResponse,
+  FlashcardResponse,
   HealthStatus,
+  ReviewSessionResponse,
+  UpdateCardBody,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -33,7 +39,6 @@ type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const getHealthCheckUrl = () => {
@@ -109,7 +114,6 @@ export function useHealthCheck<
 }
 
 /**
- * Uses AI vision to extract Japanese/English vocabulary pairs from an uploaded image
  * @summary Extract vocabulary from image
  */
 export const getExtractVocabularyUrl = () => {
@@ -194,3 +198,713 @@ export const useExtractVocabulary = <
 > => {
   return useMutation(getExtractVocabularyMutationOptions(options));
 };
+
+/**
+ * @summary List all flashcards
+ */
+export const getListCardsUrl = () => {
+  return `/api/cards`;
+};
+
+export const listCards = async (
+  options?: RequestInit,
+): Promise<FlashcardResponse[]> => {
+  return customFetch<FlashcardResponse[]>(getListCardsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCardsQueryKey = () => {
+  return [`/api/cards`] as const;
+};
+
+export const getListCardsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCards>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listCards>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListCardsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCards>>> = ({
+    signal,
+  }) => listCards({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCards>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCardsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCards>>
+>;
+export type ListCardsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all flashcards
+ */
+
+export function useListCards<
+  TData = Awaited<ReturnType<typeof listCards>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listCards>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCardsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new flashcard
+ */
+export const getCreateCardUrl = () => {
+  return `/api/cards`;
+};
+
+export const createCard = async (
+  createCardBody: CreateCardBody,
+  options?: RequestInit,
+): Promise<FlashcardResponse> => {
+  return customFetch<FlashcardResponse>(getCreateCardUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createCardBody),
+  });
+};
+
+export const getCreateCardMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCard>>,
+    TError,
+    { data: BodyType<CreateCardBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCard>>,
+  TError,
+  { data: BodyType<CreateCardBody> },
+  TContext
+> => {
+  const mutationKey = ["createCard"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCard>>,
+    { data: BodyType<CreateCardBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCard(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCardMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCard>>
+>;
+export type CreateCardMutationBody = BodyType<CreateCardBody>;
+export type CreateCardMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a new flashcard
+ */
+export const useCreateCard = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCard>>,
+    TError,
+    { data: BodyType<CreateCardBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCard>>,
+  TError,
+  { data: BodyType<CreateCardBody> },
+  TContext
+> => {
+  return useMutation(getCreateCardMutationOptions(options));
+};
+
+/**
+ * @summary Get cards in lesson queue (not yet introduced to SRS)
+ */
+export const getGetLessonCardsUrl = () => {
+  return `/api/cards/lessons`;
+};
+
+export const getLessonCards = async (
+  options?: RequestInit,
+): Promise<FlashcardResponse[]> => {
+  return customFetch<FlashcardResponse[]>(getGetLessonCardsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetLessonCardsQueryKey = () => {
+  return [`/api/cards/lessons`] as const;
+};
+
+export const getGetLessonCardsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLessonCards>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getLessonCards>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetLessonCardsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getLessonCards>>> = ({
+    signal,
+  }) => getLessonCards({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLessonCards>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLessonCardsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLessonCards>>
+>;
+export type GetLessonCardsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get cards in lesson queue (not yet introduced to SRS)
+ */
+
+export function useGetLessonCards<
+  TData = Awaited<ReturnType<typeof getLessonCards>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getLessonCards>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLessonCardsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get cards due for review
+ */
+export const getGetDueCardsUrl = () => {
+  return `/api/cards/due`;
+};
+
+export const getDueCards = async (
+  options?: RequestInit,
+): Promise<FlashcardResponse[]> => {
+  return customFetch<FlashcardResponse[]>(getGetDueCardsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDueCardsQueryKey = () => {
+  return [`/api/cards/due`] as const;
+};
+
+export const getGetDueCardsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDueCards>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDueCards>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDueCardsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDueCards>>> = ({
+    signal,
+  }) => getDueCards({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDueCards>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDueCardsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDueCards>>
+>;
+export type GetDueCardsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get cards due for review
+ */
+
+export function useGetDueCards<
+  TData = Awaited<ReturnType<typeof getDueCards>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDueCards>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDueCardsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a flashcard (SRS state, edits)
+ */
+export const getUpdateCardUrl = (id: string) => {
+  return `/api/cards/${id}`;
+};
+
+export const updateCard = async (
+  id: string,
+  updateCardBody: UpdateCardBody,
+  options?: RequestInit,
+): Promise<FlashcardResponse> => {
+  return customFetch<FlashcardResponse>(getUpdateCardUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateCardBody),
+  });
+};
+
+export const getUpdateCardMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCard>>,
+    TError,
+    { id: string; data: BodyType<UpdateCardBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCard>>,
+  TError,
+  { id: string; data: BodyType<UpdateCardBody> },
+  TContext
+> => {
+  const mutationKey = ["updateCard"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCard>>,
+    { id: string; data: BodyType<UpdateCardBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateCard(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCardMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateCard>>
+>;
+export type UpdateCardMutationBody = BodyType<UpdateCardBody>;
+export type UpdateCardMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a flashcard (SRS state, edits)
+ */
+export const useUpdateCard = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCard>>,
+    TError,
+    { id: string; data: BodyType<UpdateCardBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCard>>,
+  TError,
+  { id: string; data: BodyType<UpdateCardBody> },
+  TContext
+> => {
+  return useMutation(getUpdateCardMutationOptions(options));
+};
+
+/**
+ * @summary Delete a flashcard
+ */
+export const getDeleteCardUrl = (id: string) => {
+  return `/api/cards/${id}`;
+};
+
+export const deleteCard = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteCardUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteCardMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCard>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCard>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteCard"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCard>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteCard(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCardMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCard>>
+>;
+
+export type DeleteCardMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a flashcard
+ */
+export const useDeleteCard = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCard>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCard>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteCardMutationOptions(options));
+};
+
+/**
+ * @summary List review sessions
+ */
+export const getListSessionsUrl = () => {
+  return `/api/sessions`;
+};
+
+export const listSessions = async (
+  options?: RequestInit,
+): Promise<ReviewSessionResponse[]> => {
+  return customFetch<ReviewSessionResponse[]>(getListSessionsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSessionsQueryKey = () => {
+  return [`/api/sessions`] as const;
+};
+
+export const getListSessionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSessions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSessions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListSessionsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listSessions>>> = ({
+    signal,
+  }) => listSessions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSessions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSessionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSessions>>
+>;
+export type ListSessionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List review sessions
+ */
+
+export function useListSessions<
+  TData = Awaited<ReturnType<typeof listSessions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSessions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSessionsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Record a review session
+ */
+export const getCreateSessionUrl = () => {
+  return `/api/sessions`;
+};
+
+export const createSession = async (
+  createSessionBody: CreateSessionBody,
+  options?: RequestInit,
+): Promise<ReviewSessionResponse> => {
+  return customFetch<ReviewSessionResponse>(getCreateSessionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSessionBody),
+  });
+};
+
+export const getCreateSessionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSession>>,
+    TError,
+    { data: BodyType<CreateSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createSession>>,
+  TError,
+  { data: BodyType<CreateSessionBody> },
+  TContext
+> => {
+  const mutationKey = ["createSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createSession>>,
+    { data: BodyType<CreateSessionBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createSession(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createSession>>
+>;
+export type CreateSessionMutationBody = BodyType<CreateSessionBody>;
+export type CreateSessionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Record a review session
+ */
+export const useCreateSession = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createSession>>,
+    TError,
+    { data: BodyType<CreateSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createSession>>,
+  TError,
+  { data: BodyType<CreateSessionBody> },
+  TContext
+> => {
+  return useMutation(getCreateSessionMutationOptions(options));
+};
+
+/**
+ * @summary Get dashboard summary
+ */
+export const getGetDashboardUrl = () => {
+  return `/api/dashboard`;
+};
+
+export const getDashboard = async (
+  options?: RequestInit,
+): Promise<DashboardSummary> => {
+  return customFetch<DashboardSummary>(getGetDashboardUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDashboardQueryKey = () => {
+  return [`/api/dashboard`] as const;
+};
+
+export const getGetDashboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDashboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDashboardQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboard>>> = ({
+    signal,
+  }) => getDashboard({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDashboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDashboard>>
+>;
+export type GetDashboardQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get dashboard summary
+ */
+
+export function useGetDashboard<
+  TData = Awaited<ReturnType<typeof getDashboard>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDashboardQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

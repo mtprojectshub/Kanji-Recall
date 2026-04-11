@@ -12,13 +12,18 @@ tags:
     description: Health operations
   - name: ocr
     description: OCR and text extraction operations
+  - name: cards
+    description: Flashcard operations
+  - name: sessions
+    description: Review session operations
+  - name: dashboard
+    description: Dashboard summary operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -26,12 +31,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
   /ocr/extract:
     post:
       operationId: extractVocabulary
       tags: [ocr]
       summary: Extract vocabulary from image
-      description: Uses AI vision to extract Japanese/English vocabulary pairs from an uploaded image
       requestBody:
         required: true
         content:
@@ -57,6 +62,164 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /cards:
+    get:
+      operationId: listCards
+      tags: [cards]
+      summary: List all flashcards
+      responses:
+        "200":
+          description: List of flashcards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FlashcardResponse"
+    post:
+      operationId: createCard
+      tags: [cards]
+      summary: Create a new flashcard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCardBody"
+      responses:
+        "201":
+          description: Created flashcard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlashcardResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cards/lessons:
+    get:
+      operationId: getLessonCards
+      tags: [cards]
+      summary: Get cards in lesson queue (not yet introduced to SRS)
+      responses:
+        "200":
+          description: List of lesson cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FlashcardResponse"
+
+  /cards/due:
+    get:
+      operationId: getDueCards
+      tags: [cards]
+      summary: Get cards due for review
+      responses:
+        "200":
+          description: List of due cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FlashcardResponse"
+
+  /cards/{id}:
+    patch:
+      operationId: updateCard
+      tags: [cards]
+      summary: Update a flashcard (SRS state, edits)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCardBody"
+      responses:
+        "200":
+          description: Updated flashcard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlashcardResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCard
+      tags: [cards]
+      summary: Delete a flashcard
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /sessions:
+    get:
+      operationId: listSessions
+      tags: [sessions]
+      summary: List review sessions
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReviewSessionResponse"
+    post:
+      operationId: createSession
+      tags: [sessions]
+      summary: Record a review session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionBody"
+      responses:
+        "201":
+          description: Created session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewSessionResponse"
+
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
 components:
   schemas:
     HealthStatus:
@@ -64,38 +227,39 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required: [error, message]
+
     ExtractVocabularyBody:
       type: object
       properties:
         imageBase64:
           type: string
-          description: Base64-encoded image data
         mimeType:
           type: string
-          description: MIME type of the image (e.g. image/jpeg, image/png)
-      required:
-        - imageBase64
-        - mimeType
+      required: [imageBase64, mimeType]
+
     VocabularyPair:
       type: object
       properties:
         japanese:
           type: string
-          description: Japanese text (kanji/kana)
         reading:
           type: string
-          description: Reading in hiragana/katakana (optional)
         english:
           type: string
-          description: English meaning
         partOfSpeech:
           type: string
-          description: Part of speech (noun, verb, adjective, etc.)
-      required:
-        - japanese
-        - english
+      required: [japanese, english]
+
     ExtractVocabularyResponse:
       type: object
       properties:
@@ -105,17 +269,166 @@ components:
             $ref: "#/components/schemas/VocabularyPair"
         rawText:
           type: string
-          description: Raw text extracted from the image
-      required:
-        - pairs
-        - rawText
-    ErrorResponse:
+      required: [pairs, rawText]
+
+    FlashcardResponse:
       type: object
       properties:
-        error:
+        id:
           type: string
-        message:
+        japanese:
+          type: string
+        reading:
+          type: string
+        english:
+          type: string
+        partOfSpeech:
+          type: ["string", "null"]
+        srsStage:
+          type: string
+        nextReview:
+          type: number
+        totalReviews:
+          type: integer
+        correctReviews:
+          type: integer
+        incorrectReviews:
+          type: integer
+        streak:
+          type: integer
+        lastReviewed:
+          type: ["number", "null"]
+        lessonDirectionsCompleted:
+          type: array
+          items:
+            type: string
+        lessonComplete:
+          type: boolean
+        createdAt:
           type: string
       required:
-        - error
-        - message
+        - id
+        - japanese
+        - reading
+        - english
+        - srsStage
+        - nextReview
+        - totalReviews
+        - correctReviews
+        - incorrectReviews
+        - streak
+        - lessonDirectionsCompleted
+        - lessonComplete
+        - createdAt
+
+    CreateCardBody:
+      type: object
+      properties:
+        japanese:
+          type: string
+        reading:
+          type: string
+        english:
+          type: string
+        partOfSpeech:
+          type: ["string", "null"]
+      required: [japanese, english]
+
+    UpdateCardBody:
+      type: object
+      properties:
+        japanese:
+          type: string
+        reading:
+          type: string
+        english:
+          type: string
+        partOfSpeech:
+          type: ["string", "null"]
+        srsStage:
+          type: string
+        nextReview:
+          type: number
+        totalReviews:
+          type: integer
+        correctReviews:
+          type: integer
+        incorrectReviews:
+          type: integer
+        streak:
+          type: integer
+        lastReviewed:
+          type: ["number", "null"]
+        lessonDirectionsCompleted:
+          type: array
+          items:
+            type: string
+        lessonComplete:
+          type: boolean
+
+    ReviewSessionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        date:
+          type: number
+        cardsReviewed:
+          type: integer
+        correct:
+          type: integer
+        incorrect:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, date, cardsReviewed, correct, incorrect, createdAt]
+
+    CreateSessionBody:
+      type: object
+      properties:
+        date:
+          type: number
+        cardsReviewed:
+          type: integer
+        correct:
+          type: integer
+        incorrect:
+          type: integer
+      required: [date, cardsReviewed, correct, incorrect]
+
+    StageCount:
+      type: object
+      properties:
+        stage:
+          type: string
+        count:
+          type: integer
+      required: [stage, count]
+
+    DashboardSummary:
+      type: object
+      properties:
+        lessonsCount:
+          type: integer
+        reviewsDueCount:
+          type: integer
+        totalCards:
+          type: integer
+        burnedCount:
+          type: integer
+        allTimeAccuracy:
+          type: number
+        totalReviews:
+          type: integer
+        stageCounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/StageCount"
+      required:
+        - lessonsCount
+        - reviewsDueCount
+        - totalCards
+        - burnedCount
+        - allTimeAccuracy
+        - totalReviews
+        - stageCounts

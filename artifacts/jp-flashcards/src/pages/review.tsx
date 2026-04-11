@@ -1,38 +1,66 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Flashcard, processReview, getNextStage, getStageName } from "@/lib/srs";
-import { getDueCards, updateCard, addSession } from "@/lib/storage";
-import { Check, X, ArrowRight } from "lucide-react";
+import { getNextStage, getStageName, calculateNextReview, SRSStage } from "@/lib/srs";
+import { 
+  useGetDueCards, 
+  useUpdateCard, 
+  useCreateSession,
+  getGetDueCardsQueryKey,
+  getGetDashboardQueryKey,
+  getListSessionsQueryKey
+} from "@workspace/api-client-react";
+import { Check, ArrowRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 export default function Review() {
-  const [cards, setCards] = useState<Flashcard[]>([]);
+  const queryClient = useQueryClient();
+  const { data: cards = [], isLoading } = useGetDueCards();
+  const updateCard = useUpdateCard();
+  const createSession = useCreateSession();
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [sessionCorrect, setSessionCorrect] = useState(0);
   const [sessionIncorrect, setSessionIncorrect] = useState(0);
+  const [sessionEnded, setSessionEnded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setCards(getDueCards());
-  }, []);
 
   // Finish session
   useEffect(() => {
-    if (cards.length > 0 && currentIndex >= cards.length) {
-      addSession({
-        date: Date.now(),
-        cardsReviewed: cards.length,
-        correct: sessionCorrect,
-        incorrect: sessionIncorrect
+    if (!isLoading && cards.length > 0 && currentIndex >= cards.length && !sessionEnded) {
+      setSessionEnded(true);
+      createSession.mutate({
+        data: {
+          date: Date.now(),
+          cardsReviewed: cards.length,
+          correct: sessionCorrect,
+          incorrect: sessionIncorrect
+        }
+      }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetDueCardsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
+        }
       });
     }
-  }, [currentIndex, cards.length, sessionCorrect, sessionIncorrect]);
+  }, [currentIndex, cards.length, sessionCorrect, sessionIncorrect, createSession, queryClient, sessionEnded, isLoading]);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-24">
+          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full"></div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (cards.length === 0) {
     return (
@@ -90,8 +118,21 @@ export default function Review() {
     if (isCorrect) setSessionCorrect(prev => prev + 1);
     else setSessionIncorrect(prev => prev + 1);
 
-    const updated = processReview(card, isCorrect);
-    updateCard(updated);
+    const nextStage = getNextStage(card.srsStage as SRSStage, isCorrect);
+    const nextReview = calculateNextReview(nextStage);
+
+    updateCard.mutate({
+      id: card.id,
+      data: {
+        srsStage: nextStage,
+        nextReview,
+        totalReviews: card.totalReviews + 1,
+        correctReviews: card.correctReviews + (isCorrect ? 1 : 0),
+        incorrectReviews: card.incorrectReviews + (!isCorrect ? 1 : 0),
+        streak: isCorrect ? card.streak + 1 : 0,
+        lastReviewed: Date.now()
+      }
+    });
   };
 
   const handleNext = () => {
@@ -103,8 +144,8 @@ export default function Review() {
     }, 10);
   };
 
-  const currentStageName = getStageName(card.srsStage);
-  const nextStageName = getStageName(getNextStage(card.srsStage, feedback === 'correct'));
+  const currentStageName = getStageName(card.srsStage as SRSStage);
+  const nextStageName = getStageName(getNextStage(card.srsStage as SRSStage, feedback === 'correct'));
 
   return (
     <Layout>

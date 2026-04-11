@@ -6,9 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface VocabularyPair {
+export interface CreateCardBody {
   japanese: string;
   reading?: string;
   english: string;
-  partOfSpeech?: string;
+  /** @nullable */
+  partOfSpeech?: string | null;
 }

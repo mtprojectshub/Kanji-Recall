@@ -1,24 +1,24 @@
-import { useState, useEffect } from "react";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { getCards, getSessions } from "@/lib/storage";
-import { Flashcard, ReviewSession, getStageName, getStageColor } from "@/lib/srs";
+import { useGetDashboard, useListSessions } from "@workspace/api-client-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { format, subDays, startOfDay } from "date-fns";
 
 export default function Stats() {
-  const [cards, setCards] = useState<Flashcard[]>([]);
-  const [sessions, setSessions] = useState<ReviewSession[]>([]);
+  const { data: summary, isLoading: isSummaryLoading } = useGetDashboard();
+  const { data: sessions = [], isLoading: isSessionsLoading } = useListSessions();
 
-  useEffect(() => {
-    setCards(getCards());
-    setSessions(getSessions());
-  }, []);
+  if (isSummaryLoading || isSessionsLoading || !summary) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-24">
+          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full"></div>
+        </div>
+      </Layout>
+    );
+  }
 
-  const totalReviews = cards.reduce((acc, c) => acc + c.totalReviews, 0);
-  const correctReviews = cards.reduce((acc, c) => acc + c.correctReviews, 0);
-  const accuracy = totalReviews > 0 ? Math.round((correctReviews / totalReviews) * 100) : 0;
-  const burned = cards.filter(c => c.srsStage === 'burned').length;
+  const { totalCards, allTimeAccuracy, totalReviews, burnedCount } = summary;
 
   // Chart Data: Last 7 Days accuracy/reviews
   const last7Days = Array.from({ length: 7 }).map((_, i) => {
@@ -38,21 +38,29 @@ export default function Stats() {
   });
 
   // Pie Chart Data
-  const stageCounts = cards.reduce((acc, card) => {
-    const key = getStageName(card.srsStage);
-    acc[key] = (acc[key] || 0) + 1;
+  const pieData = summary.stageCounts.map(({ stage, count }) => {
+    const name = stage.replace(/[0-9]/g, ''); // remove numbers from apprentice1 etc
+    const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+    
+    return {
+      name: capitalizedName,
+      value: count,
+      color: capitalizedName === 'Apprentice' ? 'hsl(var(--srs-apprentice))' :
+             capitalizedName === 'Guru' ? 'hsl(var(--srs-guru))' :
+             capitalizedName === 'Master' ? 'hsl(var(--srs-master))' :
+             capitalizedName === 'Enlightened' ? 'hsl(var(--srs-enlightened))' :
+             'hsl(var(--srs-burned))'
+    };
+  }).reduce((acc, curr) => {
+    // combine apprentice1..4 into Apprentice
+    const existing = acc.find((item: any) => item.name === curr.name);
+    if (existing) {
+      existing.value += curr.value;
+    } else {
+      acc.push(curr);
+    }
     return acc;
-  }, {} as Record<string, number>);
-
-  const pieData = Object.entries(stageCounts).map(([name, value]) => ({
-    name,
-    value,
-    color: name === 'Apprentice' ? 'hsl(var(--srs-apprentice))' :
-           name === 'Guru' ? 'hsl(var(--srs-guru))' :
-           name === 'Master' ? 'hsl(var(--srs-master))' :
-           name === 'Enlightened' ? 'hsl(var(--srs-enlightened))' :
-           'hsl(var(--srs-burned))'
-  }));
+  }, [] as any[]).filter((item: any) => item.value > 0);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -82,13 +90,13 @@ export default function Stats() {
           <Card>
             <CardContent className="p-6">
               <div className="text-sm text-muted-foreground font-medium mb-1">Total Cards</div>
-              <div className="text-3xl font-bold font-serif">{cards.length}</div>
+              <div className="text-3xl font-bold font-serif">{totalCards}</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-6">
               <div className="text-sm text-muted-foreground font-medium mb-1">All Time Accuracy</div>
-              <div className="text-3xl font-bold font-serif">{accuracy}%</div>
+              <div className="text-3xl font-bold font-serif">{allTimeAccuracy}%</div>
             </CardContent>
           </Card>
           <Card>
@@ -100,7 +108,7 @@ export default function Stats() {
           <Card>
             <CardContent className="p-6">
               <div className="text-sm text-muted-foreground font-medium mb-1">Words Burned</div>
-              <div className="text-3xl font-bold font-serif text-srs-burned">{burned}</div>
+              <div className="text-3xl font-bold font-serif text-srs-burned">{burnedCount}</div>
             </CardContent>
           </Card>
         </div>
@@ -143,7 +151,7 @@ export default function Stats() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {pieData.map((entry, index) => (
+                      {pieData.map((entry: any, index: number) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>

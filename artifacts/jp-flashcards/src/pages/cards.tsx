@@ -1,37 +1,44 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Flashcard, getStageColor, getStageName } from "@/lib/srs";
-import { getCards, deleteCard, updateCard } from "@/lib/storage";
+import { getStageColor, getStageName, SRSStage } from "@/lib/srs";
+import { 
+  useListCards, 
+  useUpdateCard, 
+  useDeleteCard,
+  getListCardsQueryKey,
+  getGetDashboardQueryKey,
+  FlashcardResponse
+} from "@workspace/api-client-react";
 import { Search, Edit2, Trash2, Check, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Cards() {
-  const [cards, setCards] = useState<Flashcard[]>([]);
+  const queryClient = useQueryClient();
+  const { data: cards = [], isLoading } = useListCards();
+  const updateCard = useUpdateCard();
+  const deleteCard = useDeleteCard();
+  
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{japanese: string, reading: string, english: string}>({japanese: "", reading: "", english: ""});
 
-  const loadCards = () => {
-    const sorted = getCards().sort((a, b) => b.createdAt - a.createdAt);
-    setCards(sorted);
-  };
-
-  useEffect(() => {
-    loadCards();
-  }, []);
-
   const handleDelete = (id: string) => {
     if (confirm("Delete this card?")) {
-      deleteCard(id);
-      loadCards();
+      deleteCard.mutate({ id }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        }
+      });
     }
   };
 
-  const handleEdit = (card: Flashcard) => {
+  const handleEdit = (card: FlashcardResponse) => {
     setEditingId(card.id);
     setEditForm({
       japanese: card.japanese,
@@ -40,22 +47,37 @@ export default function Cards() {
     });
   };
 
-  const handleSave = (card: Flashcard) => {
-    updateCard({
-      ...card,
-      japanese: editForm.japanese,
-      reading: editForm.reading,
-      english: editForm.english
+  const handleSave = (card: FlashcardResponse) => {
+    updateCard.mutate({
+      id: card.id,
+      data: {
+        japanese: editForm.japanese,
+        reading: editForm.reading,
+        english: editForm.english
+      }
+    }, {
+      onSuccess: () => {
+        setEditingId(null);
+        queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
+      }
     });
-    setEditingId(null);
-    loadCards();
   };
 
   const filteredCards = cards.filter(c => 
     c.japanese.includes(search) || 
     c.english.toLowerCase().includes(search.toLowerCase()) || 
     c.reading.includes(search)
-  );
+  ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-24">
+          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full"></div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -86,21 +108,21 @@ export default function Cards() {
                     <Input value={editForm.reading} onChange={e => setEditForm({...editForm, reading: e.target.value})} placeholder="Reading" />
                     <Input value={editForm.english} onChange={e => setEditForm({...editForm, english: e.target.value})} placeholder="English" />
                     <div className="flex gap-2 pt-2">
-                      <Button size="sm" onClick={() => handleSave(card)} className="flex-1"><Check className="w-4 h-4 mr-1"/> Save</Button>
+                      <Button size="sm" onClick={() => handleSave(card)} className="flex-1" disabled={updateCard.isPending}><Check className="w-4 h-4 mr-1"/> Save</Button>
                       <Button size="sm" variant="outline" onClick={() => setEditingId(null)}><X className="w-4 h-4"/></Button>
                     </div>
                   </div>
                 ) : (
                   <>
                     <div className="flex justify-between items-start mb-3">
-                      <Badge className={`${getStageColor(card.srsStage)} border-none shadow-none text-xs font-medium px-2 py-0.5`}>
-                        {getStageName(card.srsStage)}
+                      <Badge className={`${getStageColor(card.srsStage as SRSStage)} border-none shadow-none text-xs font-medium px-2 py-0.5`}>
+                        {getStageName(card.srsStage as SRSStage)}
                       </Badge>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity md:opacity-100">
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => handleEdit(card)}>
                           <Edit2 className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(card.id)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(card.id)} disabled={deleteCard.isPending}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>

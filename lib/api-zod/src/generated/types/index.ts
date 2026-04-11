@@ -6,8 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./createCardBody";
+export * from "./createSessionBody";
+export * from "./dashboardSummary";
 export * from "./errorResponse";
 export * from "./extractVocabularyBody";
 export * from "./extractVocabularyResponse";
+export * from "./flashcardResponse";
 export * from "./healthStatus";
+export * from "./reviewSessionResponse";
+export * from "./stageCount";
+export * from "./updateCardBody";
 export * from "./vocabularyPair";

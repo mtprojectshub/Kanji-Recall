@@ -9,6 +9,5 @@ import type { VocabularyPair } from "./vocabularyPair";
 
 export interface ExtractVocabularyResponse {
   pairs: VocabularyPair[];
-  /** Raw text extracted from the image */
   rawText: string;
 }

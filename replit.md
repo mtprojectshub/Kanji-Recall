@@ -43,13 +43,24 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - Dashboard: reviews due, lessons queue, stage distribution, accuracy
 - Vocabulary browser: searchable, filterable, editable
 - Stats page: 7-day accuracy chart, stage distribution pie chart
-- All data stored in localStorage — no account needed
+- All data stored server-side in PostgreSQL — survives browser clears, works across devices
+- Bidirectional lesson mode: JP→EN and EN→JP directions must both be completed before a card enters the review queue
 
 **Key Files:**
-- `artifacts/jp-flashcards/src/lib/srs.ts` — SRS algorithm implementation
-- `artifacts/jp-flashcards/src/lib/storage.ts` — localStorage operations
+- `artifacts/jp-flashcards/src/lib/srs.ts` — SRS algorithm (pure functions: getNextStage, calculateNextReview, etc.)
+- `artifacts/api-server/src/routes/cards.ts` — CRUD for flashcards (list, create, update, delete, lessons queue, due queue)
+- `artifacts/api-server/src/routes/sessions.ts` — Review session persistence
+- `artifacts/api-server/src/routes/dashboard.ts` — Dashboard summary endpoint
 - `artifacts/api-server/src/routes/ocr.ts` — OCR endpoint using OpenAI vision
-- `lib/api-spec/openapi.yaml` — API spec with /ocr/extract endpoint
+- `lib/db/src/schema/flashcards.ts` — Drizzle flashcards table schema
+- `lib/db/src/schema/review_sessions.ts` — Drizzle review_sessions table schema
+- `lib/api-spec/openapi.yaml` — Full OpenAPI spec for all endpoints
+
+**After running codegen, always rebuild api-client-react declarations:**
+```
+pnpm --filter @workspace/api-spec run codegen
+cd lib/api-client-react && npx tsc --project tsconfig.json
+```
 
 **SRS Intervals:**
 - Apprentice 1: 4h, Apprentice 2: 8h, Apprentice 3: 1d, Apprentice 4: 2d

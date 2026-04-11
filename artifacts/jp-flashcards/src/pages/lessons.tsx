@@ -1,31 +1,45 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Flashcard, LessonDirection, getLessonPrompt, markLessonDirectionComplete, normalizeAnswer } from "@/lib/srs";
-import { getLessonCards, updateCard } from "@/lib/storage";
+import { LessonDirection, getLessonPrompt } from "@/lib/srs";
+import { 
+  useGetLessonCards, 
+  useUpdateCard,
+  getGetLessonCardsQueryKey,
+  getGetDashboardQueryKey
+} from "@workspace/api-client-react";
 
 export default function Lessons() {
-  const [cards, setCards] = useState<Flashcard[]>([]);
+  const queryClient = useQueryClient();
+  const { data: cards = [], isLoading } = useGetLessonCards();
+  const updateCard = useUpdateCard();
+  
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [direction, setDirection] = useState<LessonDirection>("jp-en");
 
-  useEffect(() => {
-    setCards(getLessonCards());
-  }, []);
-
   const currentCard = cards[currentIndex];
+  
   const lesson = useMemo(() => {
-    if (!currentCard) {
-      return null;
-    }
-
-    return getLessonPrompt(currentCard, direction);
+    if (!currentCard) return null;
+    // Cast to any to bypass type mismatch between FlashcardResponse and Flashcard
+    return getLessonPrompt(currentCard as any, direction);
   }, [currentCard, direction]);
 
-  if (cards.length === 0) {
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-24">
+          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full"></div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (cards.length === 0 || !currentCard) {
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
@@ -48,24 +62,30 @@ export default function Lessons() {
   }
 
   const handleNext = (knew: boolean) => {
-    const answerMatches = normalizeAnswer(lesson?.answer ?? "");
-    const updated = markLessonDirectionComplete(currentCard, direction);
-    const shouldPromoteToReview = updated.lessonComplete;
+    const completed = new Set(currentCard.lessonDirectionsCompleted || []);
+    completed.add(direction);
+    const newCompleted = Array.from(completed);
+    
+    const bothDone = newCompleted.includes('jp-en') && newCompleted.includes('en-jp');
 
-    if (shouldPromoteToReview) {
-      updateCard({
-        ...updated,
-        nextReview: Date.now(),
-      });
-    } else {
-      updateCard(updated);
-    }
+    updateCard.mutate({
+      id: currentCard.id,
+      data: {
+        lessonDirectionsCompleted: newCompleted,
+        lessonComplete: bothDone,
+        nextReview: bothDone ? Date.now() : 0,
+        srsStage: bothDone ? 'apprentice1' : currentCard.srsStage,
+      }
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetLessonCardsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+      }
+    });
 
     if (currentIndex < cards.length - 1) {
       setCurrentIndex((prev) => prev + 1);
       setFlipped(false);
-    } else {
-      setCards([]);
     }
   };
 
