@@ -179,7 +179,7 @@ export default function Review() {
         <Card
           className={`min-h-[480px] flex flex-col justify-between border shadow-sm relative overflow-hidden transition-colors duration-300 ${
             feedback === "correct"
-              ? "bg-srs-master/10 border-srs-master"
+              ? "bg-green-50 border-green-400"
               : feedback === "incorrect"
               ? "bg-destructive/10 border-destructive"
               : "bg-card"
@@ -193,7 +193,7 @@ export default function Review() {
                 <div className="bg-background/80 backdrop-blur-sm px-4 py-2 rounded-full text-sm font-medium shadow-sm flex items-center gap-2">
                   <span className="text-muted-foreground">{currentStageName}</span>
                   <ArrowRight className="w-4 h-4" />
-                  <span className={feedback === "correct" ? "text-primary" : "text-destructive"}>
+                  <span className={feedback === "correct" ? "text-green-600" : "text-destructive"}>
                     {nextStageName}
                   </span>
                 </div>
@@ -247,11 +247,11 @@ export default function Review() {
                   onCompositionEnd={() => { composingRef.current = false; }}
                   placeholder="ひらがなで入力..."
                   lang="ja"
-                  className={`h-14 text-2xl text-center font-serif ${
+                  className={`h-20 text-4xl text-center font-serif ${
                     feedback !== null ? "pointer-events-none" : ""
                   } ${
                     feedback === "correct"
-                      ? "border-primary text-primary"
+                      ? "border-green-500 text-green-600"
                       : feedback === "incorrect"
                       ? "border-destructive text-destructive"
                       : ""
@@ -264,7 +264,7 @@ export default function Review() {
                   <Button
                     type="submit"
                     size="icon"
-                    className="h-14 w-14 bg-primary hover:bg-primary/90 flex-shrink-0"
+                    className="h-20 w-16 bg-primary hover:bg-primary/90 flex-shrink-0"
                     disabled={!answer.trim()}
                   >
                     <ArrowRight className="w-6 h-6" />
@@ -277,7 +277,7 @@ export default function Review() {
                   onClick={handleNext}
                   className={`w-full h-14 mt-4 text-lg animate-in fade-in slide-in-from-bottom-2 ${
                     feedback === "correct"
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      ? "bg-green-600 text-white hover:bg-green-700"
                       : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   }`}
                   autoFocus
