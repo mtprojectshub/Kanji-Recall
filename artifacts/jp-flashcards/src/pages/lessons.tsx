@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
@@ -32,7 +32,6 @@ export default function Lessons() {
   const { data: fetchedCards = [], isLoading } = useGetLessonCards();
   const updateCard = useUpdateCard();
 
-  // The active batch for this session — seeded once, never replaced by background refetches
   const [queue, setQueue] = useState<ApiCard[]>([]);
   const seeded = useRef(false);
   const batchSizeRef = useRef(0);
@@ -49,7 +48,6 @@ export default function Lessons() {
   const [flipped, setFlipped] = useState(false);
   const [direction, setDirection] = useState<LessonDirection>("jp-en");
 
-  // Per-card direction completion tracked locally
   const [completedDirs, setCompletedDirs] = useState<Map<string, Set<string>>>(
     () => new Map()
   );
@@ -60,11 +58,14 @@ export default function Lessons() {
   const getCardDirs = (id: string) => completedDirs.get(id) ?? new Set<string>();
   const dirDone = (id: string, dir: string) => getCardDirs(id).has(dir);
 
+  const batchFinished = batchSizeRef.current > 0 && queue.length === 0;
+  const completedCount = batchSizeRef.current - queue.length;
+  const progressPct = batchSizeRef.current > 0 ? (completedCount / batchSizeRef.current) * 100 : 0;
+
   const handleNext = (knew: boolean) => {
     if (!currentCard) return;
 
     if (knew) {
-      // Mark this direction as learned
       const dirs = new Set(getCardDirs(currentCard.id));
       dirs.add(direction);
       setCompletedDirs(new Map(completedDirs).set(currentCard.id, dirs));
@@ -72,7 +73,6 @@ export default function Lessons() {
       const bothDone = dirs.has("jp-en") && dirs.has("en-jp");
 
       if (bothDone) {
-        // Graduate this card to the review queue
         updateCard.mutate(
           {
             id: currentCard.id,
@@ -90,7 +90,7 @@ export default function Lessons() {
             },
           }
         );
-        // Remove from local batch and clamp index
+
         const newQueue = queue.filter((c) => c.id !== currentCard.id);
         setQueue(newQueue);
         setCurrentIndex((i) => Math.min(i, Math.max(0, newQueue.length - 1)));
@@ -98,14 +98,10 @@ export default function Lessons() {
         return;
       }
 
-      // One direction done — immediately flip to the other direction for the same card
-      const otherDir: LessonDirection = direction === "jp-en" ? "en-jp" : "jp-en";
-      setDirection(otherDir);
       setFlipped(false);
       return;
     }
 
-    // "Needs Work" — advance to next card (wrap), keep current direction
     setCurrentIndex((i) => (i + 1) % queue.length);
     setFlipped(false);
   };
@@ -120,7 +116,6 @@ export default function Lessons() {
     setCompletedDirs(new Map());
   };
 
-  // ── Loading ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <Layout>
@@ -131,12 +126,10 @@ export default function Lessons() {
     );
   }
 
-  // ── Empty states ───────────────────────────────────────────────────────────
   if (queue.length === 0) {
     const remaining = fetchedCards.length;
 
     if (remaining > 0) {
-      // This batch is done but there are more lessons waiting
       return (
         <Layout>
           <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
@@ -144,9 +137,7 @@ export default function Lessons() {
               花
             </div>
             <h2 className="text-2xl font-serif font-semibold mb-2">Batch complete!</h2>
-            <p className="text-muted-foreground mb-2">
-              Great work on this batch of {BATCH_SIZE} words.
-            </p>
+            <p className="text-muted-foreground mb-2">Great work on this batch of {BATCH_SIZE} words.</p>
             <p className="text-muted-foreground mb-8">
               {remaining} more word{remaining !== 1 ? "s" : ""} waiting in your next batch.
             </p>
@@ -163,7 +154,6 @@ export default function Lessons() {
       );
     }
 
-    // Truly all done
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
@@ -189,7 +179,13 @@ export default function Lessons() {
 
   if (!currentCard) return null;
 
-  // ── Main lesson view ───────────────────────────────────────────────────────
+  const batchDirection = direction;
+  const currentBatchComplete = batchFinished;
+  const allCardsDoneInCurrentDirection = queue.every((card) =>
+    dirDone(card.id, batchDirection)
+  );
+  const shouldShowSwitchHint = allCardsDoneInCurrentDirection && !currentBatchComplete;
+
   return (
     <Layout>
       <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
@@ -197,23 +193,28 @@ export default function Lessons() {
           <div>
             <h1 className="text-2xl font-serif font-bold">New Lessons</h1>
             <p className="text-muted-foreground mt-1 text-sm">
-              Learn each word in both directions to move it to reviews.
+              Learn the full batch in one direction first, then switch.
             </p>
           </div>
 
-          {/* Manual direction toggle */}
           <div className="flex items-center gap-2 rounded-full border bg-background p-1 text-sm">
             <Button
               size="sm"
               variant={direction === "jp-en" ? "default" : "ghost"}
-              onClick={() => { setDirection("jp-en"); setFlipped(false); }}
+              onClick={() => {
+                setDirection("jp-en");
+                setFlipped(false);
+              }}
             >
               JP → EN
             </Button>
             <Button
               size="sm"
               variant={direction === "en-jp" ? "default" : "ghost"}
-              onClick={() => { setDirection("en-jp"); setFlipped(false); }}
+              onClick={() => {
+                setDirection("en-jp");
+                setFlipped(false);
+              }}
             >
               EN → JP
             </Button>
@@ -224,26 +225,22 @@ export default function Lessons() {
           </span>
         </div>
 
-        {/* Progress bar */}
-        {(() => {
-          const total = batchSizeRef.current;
-          const completed = total - queue.length;
-          const pct = total > 0 ? (completed / total) * 100 : 0;
-          return (
-            <div className="flex items-center gap-3 mb-5">
-              <Progress value={pct} className="h-2 flex-1" />
-              <span className="text-sm font-medium text-muted-foreground tabular-nums whitespace-nowrap">
-                {completed} / {total}
-              </span>
-            </div>
-          );
-        })()}
+        <div className="flex items-center gap-3 mb-5">
+          <Progress value={progressPct} className="h-2 flex-1" />
+          <span className="text-sm font-medium text-muted-foreground tabular-nums whitespace-nowrap">
+            {completedCount} / {batchSizeRef.current}
+          </span>
+        </div>
+
+        {shouldShowSwitchHint && (
+          <div className="mb-4 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            This batch is done in {batchDirection === "jp-en" ? "JP → EN" : "EN → JP"}. Switch to the opposite direction to continue.
+          </div>
+        )}
 
         <Card className="min-h-[450px] flex flex-col justify-between border shadow-sm relative overflow-hidden bg-card">
           <CardContent className="flex-1 flex flex-col items-center justify-center p-8 text-center h-full">
             <div className="flex-1 flex flex-col items-center justify-center">
-
-              {/* Prompt */}
               {lesson?.reading && direction === "jp-en" && flipped && (
                 <div className="text-xl text-muted-foreground mb-3 font-serif">
                   {lesson.reading}
@@ -253,7 +250,6 @@ export default function Lessons() {
                 {lesson?.prompt}
               </div>
 
-              {/* Direction completion badges */}
               <div className="flex gap-2 mb-4">
                 {(["jp-en", "en-jp"] as const).map((dir) => (
                   <span
@@ -272,7 +268,6 @@ export default function Lessons() {
                 ))}
               </div>
 
-              {/* Revealed answer */}
               {flipped && lesson && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-2">
                   <div className="text-3xl font-semibold text-primary">{lesson.answer}</div>
