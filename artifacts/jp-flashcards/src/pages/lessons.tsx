@@ -12,6 +12,8 @@ import {
   getGetDashboardQueryKey,
 } from "@workspace/api-client-react";
 
+const BATCH_SIZE = 15;
+
 type ApiCard = {
   id: string;
   japanese: string;
@@ -29,49 +31,44 @@ export default function Lessons() {
   const { data: fetchedCards = [], isLoading } = useGetLessonCards();
   const updateCard = useUpdateCard();
 
-  // Capture the lesson queue once — never let a background refetch change it mid-session
+  // The active batch for this session — seeded once, never replaced by background refetches
   const [queue, setQueue] = useState<ApiCard[]>([]);
   const seeded = useRef(false);
   useEffect(() => {
-    if (!seeded.current && fetchedCards.length > 0) {
-      setQueue(fetchedCards as ApiCard[]);
+    if (!seeded.current && !isLoading && fetchedCards.length > 0) {
+      setQueue((fetchedCards as ApiCard[]).slice(0, BATCH_SIZE));
       seeded.current = true;
     }
-  }, [fetchedCards]);
+  }, [fetchedCards, isLoading]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [direction, setDirection] = useState<LessonDirection>("jp-en");
 
-  // Track which directions are done for each card locally (cardId → Set of directions)
+  // Per-card direction completion tracked locally
   const [completedDirs, setCompletedDirs] = useState<Map<string, Set<string>>>(
     () => new Map()
   );
 
   const currentCard = queue[currentIndex];
+  const lesson = currentCard ? getLessonPrompt(currentCard as any, direction) : null;
 
-  const lesson =
-    currentCard ? getLessonPrompt(currentCard as any, direction) : null;
-
-  const getCardDirs = (cardId: string) =>
-    completedDirs.get(cardId) ?? new Set<string>();
+  const getCardDirs = (id: string) => completedDirs.get(id) ?? new Set<string>();
+  const dirDone = (id: string, dir: string) => getCardDirs(id).has(dir);
 
   const handleNext = (knew: boolean) => {
     if (!currentCard) return;
 
-    let newCompletedDirs = new Map(completedDirs);
-
     if (knew) {
+      // Mark this direction as learned
       const dirs = new Set(getCardDirs(currentCard.id));
       dirs.add(direction);
-      newCompletedDirs.set(currentCard.id, dirs);
-      setCompletedDirs(newCompletedDirs);
+      setCompletedDirs(new Map(completedDirs).set(currentCard.id, dirs));
 
-      const bothDone =
-        dirs.has("jp-en") && dirs.has("en-jp");
+      const bothDone = dirs.has("jp-en") && dirs.has("en-jp");
 
       if (bothDone) {
-        // Persist to server and remove from local queue
+        // Graduate this card to the review queue
         updateCard.mutate(
           {
             id: currentCard.id,
@@ -84,35 +81,40 @@ export default function Lessons() {
           },
           {
             onSuccess: () => {
-              queryClient.invalidateQueries({
-                queryKey: getGetLessonCardsQueryKey(),
-              });
-              queryClient.invalidateQueries({
-                queryKey: getGetDashboardQueryKey(),
-              });
+              queryClient.invalidateQueries({ queryKey: getGetLessonCardsQueryKey() });
+              queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
             },
           }
         );
-
-        // Remove the finished card from the local queue
+        // Remove from local batch and clamp index
         const newQueue = queue.filter((c) => c.id !== currentCard.id);
         setQueue(newQueue);
-        const nextIndex = Math.min(currentIndex, newQueue.length - 1);
-        setCurrentIndex(Math.max(0, nextIndex));
+        setCurrentIndex((i) => Math.min(i, Math.max(0, newQueue.length - 1)));
         setFlipped(false);
         return;
       }
+
+      // One direction done — immediately flip to the other direction for the same card
+      const otherDir: LessonDirection = direction === "jp-en" ? "en-jp" : "jp-en";
+      setDirection(otherDir);
+      setFlipped(false);
+      return;
     }
 
-    // Advance to next card (wrap around so every card gets seen)
-    const nextIndex = (currentIndex + 1) % queue.length;
-    setCurrentIndex(nextIndex);
+    // "Needs Work" — advance to next card (wrap), keep current direction
+    setCurrentIndex((i) => (i + 1) % queue.length);
     setFlipped(false);
   };
 
-  const dirDone = (cardId: string, dir: string) =>
-    getCardDirs(cardId).has(dir);
+  const handleStartNextBatch = () => {
+    setQueue((fetchedCards as ApiCard[]).slice(0, BATCH_SIZE));
+    setCurrentIndex(0);
+    setFlipped(false);
+    setDirection("jp-en");
+    setCompletedDirs(new Map());
+  };
 
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <Layout>
@@ -123,16 +125,46 @@ export default function Lessons() {
     );
   }
 
-  if (queue.length === 0 && !isLoading) {
+  // ── Empty states ───────────────────────────────────────────────────────────
+  if (queue.length === 0) {
+    const remaining = fetchedCards.length;
+
+    if (remaining > 0) {
+      // This batch is done but there are more lessons waiting
+      return (
+        <Layout>
+          <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
+            <div className="bg-primary/10 text-primary w-24 h-24 rounded-full flex items-center justify-center mb-6 text-4xl font-serif">
+              花
+            </div>
+            <h2 className="text-2xl font-serif font-semibold mb-2">Batch complete!</h2>
+            <p className="text-muted-foreground mb-2">
+              Great work on this batch of {BATCH_SIZE} words.
+            </p>
+            <p className="text-muted-foreground mb-8">
+              {remaining} more word{remaining !== 1 ? "s" : ""} waiting in your next batch.
+            </p>
+            <div className="flex gap-4">
+              <Button asChild variant="outline">
+                <Link href="/">Back to Dashboard</Link>
+              </Button>
+              <Button onClick={handleStartNextBatch}>
+                Start Next Batch ({Math.min(remaining, BATCH_SIZE)} words)
+              </Button>
+            </div>
+          </div>
+        </Layout>
+      );
+    }
+
+    // Truly all done
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
           <div className="bg-primary/10 text-primary w-24 h-24 rounded-full flex items-center justify-center mb-6 text-4xl font-serif">
             花
           </div>
-          <h2 className="text-2xl font-serif font-semibold mb-2">
-            You're all caught up!
-          </h2>
+          <h2 className="text-2xl font-serif font-semibold mb-2">You're all caught up!</h2>
           <p className="text-muted-foreground mb-8">
             No new lessons in your queue. Take a break or add more vocabulary.
           </p>
@@ -151,46 +183,42 @@ export default function Lessons() {
 
   if (!currentCard) return null;
 
+  // ── Main lesson view ───────────────────────────────────────────────────────
   return (
     <Layout>
       <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
-        <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
+        <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-serif font-bold">New Lessons</h1>
-            <p className="text-muted-foreground mt-1">
-              Complete both directions for each card to move it to reviews.
+            <p className="text-muted-foreground mt-1 text-sm">
+              Learn each word in both directions to move it to reviews.
             </p>
           </div>
 
+          {/* Manual direction toggle */}
           <div className="flex items-center gap-2 rounded-full border bg-background p-1 text-sm">
             <Button
               size="sm"
               variant={direction === "jp-en" ? "default" : "ghost"}
-              onClick={() => {
-                setDirection("jp-en");
-                setFlipped(false);
-              }}
+              onClick={() => { setDirection("jp-en"); setFlipped(false); }}
             >
-              Japanese → English
+              JP → EN
             </Button>
             <Button
               size="sm"
               variant={direction === "en-jp" ? "default" : "ghost"}
-              onClick={() => {
-                setDirection("en-jp");
-                setFlipped(false);
-              }}
+              onClick={() => { setDirection("en-jp"); setFlipped(false); }}
             >
-              English → Japanese
+              EN → JP
             </Button>
           </div>
 
           <span className="text-muted-foreground font-medium bg-muted px-3 py-1 rounded-full text-sm">
-            {currentIndex + 1} / {queue.length}
+            {queue.length} left in batch
           </span>
         </div>
 
-        {/* Progress indicators per card */}
+        {/* Per-card progress bar */}
         <div className="flex gap-1 mb-4 flex-wrap">
           {queue.map((card, i) => {
             const jp = dirDone(card.id, "jp-en");
@@ -212,11 +240,13 @@ export default function Lessons() {
           })}
         </div>
 
-        <Card className="min-h-[450px] flex flex-col justify-between border shadow-sm relative overflow-hidden transition-all duration-300 bg-card">
+        <Card className="min-h-[450px] flex flex-col justify-between border shadow-sm relative overflow-hidden bg-card">
           <CardContent className="flex-1 flex flex-col items-center justify-center p-8 text-center h-full">
             <div className="flex-1 flex flex-col items-center justify-center">
+
+              {/* Prompt */}
               {lesson?.reading && direction === "jp-en" && flipped && (
-                <div className="text-xl text-muted-foreground mb-4 font-serif">
+                <div className="text-xl text-muted-foreground mb-3 font-serif">
                   {lesson.reading}
                 </div>
               )}
@@ -224,33 +254,29 @@ export default function Lessons() {
                 {lesson?.prompt}
               </div>
 
-              {/* Show which directions are done for this card */}
+              {/* Direction completion badges */}
               <div className="flex gap-2 mb-4">
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full border ${
-                    dirDone(currentCard.id, "jp-en")
-                      ? "bg-green-100 text-green-700 border-green-300"
-                      : "bg-muted text-muted-foreground border-border"
-                  }`}
-                >
-                  JP→EN {dirDone(currentCard.id, "jp-en") ? "✓" : ""}
-                </span>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full border ${
-                    dirDone(currentCard.id, "en-jp")
-                      ? "bg-green-100 text-green-700 border-green-300"
-                      : "bg-muted text-muted-foreground border-border"
-                  }`}
-                >
-                  EN→JP {dirDone(currentCard.id, "en-jp") ? "✓" : ""}
-                </span>
+                {(["jp-en", "en-jp"] as const).map((dir) => (
+                  <span
+                    key={dir}
+                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
+                      dirDone(currentCard.id, dir)
+                        ? "bg-green-100 text-green-700 border-green-300"
+                        : dir === direction
+                        ? "bg-primary/10 text-primary border-primary/30"
+                        : "bg-muted text-muted-foreground border-border"
+                    }`}
+                  >
+                    {dir === "jp-en" ? "JP→EN" : "EN→JP"}
+                    {dirDone(currentCard.id, dir) ? " ✓" : ""}
+                  </span>
+                ))}
               </div>
 
+              {/* Revealed answer */}
               {flipped && lesson && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-2">
-                  <div className="text-3xl font-semibold text-primary">
-                    {lesson.answer}
-                  </div>
+                  <div className="text-3xl font-semibold text-primary">{lesson.answer}</div>
                   {direction === "en-jp" && lesson.reading && (
                     <div className="text-xl text-muted-foreground font-serif">
                       {lesson.reading}
@@ -286,7 +312,7 @@ export default function Lessons() {
                 <Button
                   onClick={() => setFlipped(true)}
                   size="lg"
-                  className="w-full h-14 text-lg bg-secondary text-secondary-foreground hover:bg-secondary/90 hover-elevate transition-all"
+                  className="w-full h-14 text-lg bg-secondary text-secondary-foreground hover:bg-secondary/90 transition-all"
                 >
                   Reveal Answer
                 </Button>
