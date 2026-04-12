@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { LessonDirection, getLessonPrompt } from "@/lib/srs";
 import {
   useGetLessonCards,
@@ -34,9 +35,12 @@ export default function Lessons() {
   // The active batch for this session — seeded once, never replaced by background refetches
   const [queue, setQueue] = useState<ApiCard[]>([]);
   const seeded = useRef(false);
+  const batchSizeRef = useRef(0);
   useEffect(() => {
     if (!seeded.current && !isLoading && fetchedCards.length > 0) {
-      setQueue((fetchedCards as ApiCard[]).slice(0, BATCH_SIZE));
+      const batch = (fetchedCards as ApiCard[]).slice(0, BATCH_SIZE);
+      setQueue(batch);
+      batchSizeRef.current = batch.length;
       seeded.current = true;
     }
   }, [fetchedCards, isLoading]);
@@ -107,7 +111,9 @@ export default function Lessons() {
   };
 
   const handleStartNextBatch = () => {
-    setQueue((fetchedCards as ApiCard[]).slice(0, BATCH_SIZE));
+    const batch = (fetchedCards as ApiCard[]).slice(0, BATCH_SIZE);
+    setQueue(batch);
+    batchSizeRef.current = batch.length;
     setCurrentIndex(0);
     setFlipped(false);
     setDirection("jp-en");
@@ -218,27 +224,20 @@ export default function Lessons() {
           </span>
         </div>
 
-        {/* Per-card progress bar */}
-        <div className="flex gap-1 mb-4 flex-wrap">
-          {queue.map((card, i) => {
-            const jp = dirDone(card.id, "jp-en");
-            const en = dirDone(card.id, "en-jp");
-            return (
-              <div
-                key={card.id}
-                className={`h-1.5 flex-1 rounded-full transition-colors ${
-                  i === currentIndex
-                    ? "bg-primary"
-                    : jp && en
-                    ? "bg-green-400"
-                    : jp || en
-                    ? "bg-primary/40"
-                    : "bg-muted"
-                }`}
-              />
-            );
-          })}
-        </div>
+        {/* Progress bar */}
+        {(() => {
+          const total = batchSizeRef.current;
+          const completed = total - queue.length;
+          const pct = total > 0 ? (completed / total) * 100 : 0;
+          return (
+            <div className="flex items-center gap-3 mb-5">
+              <Progress value={pct} className="h-2 flex-1" />
+              <span className="text-sm font-medium text-muted-foreground tabular-nums whitespace-nowrap">
+                {completed} / {total}
+              </span>
+            </div>
+          );
+        })()}
 
         <Card className="min-h-[450px] flex flex-col justify-between border shadow-sm relative overflow-hidden bg-card">
           <CardContent className="flex-1 flex flex-col items-center justify-center p-8 text-center h-full">

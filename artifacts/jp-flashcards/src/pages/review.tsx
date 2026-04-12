@@ -247,7 +247,7 @@ export default function Review() {
                   onCompositionEnd={() => { composingRef.current = false; }}
                   placeholder="ひらがなで入力..."
                   lang="ja"
-                  className={`h-14 text-lg text-center font-serif ${
+                  className={`h-14 text-2xl text-center font-serif ${
                     feedback !== null ? "pointer-events-none" : ""
                   } ${
                     feedback === "correct"
