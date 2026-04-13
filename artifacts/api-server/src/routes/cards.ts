@@ -128,3 +128,29 @@ router.delete("/:id", async (req, res) => {
 });
 
 export default router;
+
+// Rescue orphaned cards: cards that exist in the DB but were never properly
+// graduated from the lesson flow (lessonComplete = false, totalReviews = 0).
+// Marks them lessonComplete = true and sets nextReview = now so they appear
+// immediately in the review queue.
+router.post("/rescue", async (_req, res) => {
+  try {
+    const now = Date.now();
+    const rescued = await db
+      .update(flashcardsTable)
+      .set({
+        lessonComplete: true,
+        nextReview: now,
+        srsStage: "apprentice1",
+      })
+      .where(
+        sql`${flashcardsTable.lessonComplete} = false AND ${flashcardsTable.totalReviews} = 0`
+      )
+      .returning();
+
+    res.json({ rescued: rescued.length, cards: rescued });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Failed to rescue cards" });
+  }
+});
