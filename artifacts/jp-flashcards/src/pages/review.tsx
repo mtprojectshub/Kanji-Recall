@@ -237,7 +237,7 @@ export default function Review() {
             </div>
 
             {/* Input area */}
-            <div className="w-full max-w-sm mt-auto">
+            <div className="w-full max-w-lg mt-auto">
               <form onSubmit={handleSubmit} className="flex gap-2">
                 <Input
                   ref={inputRef}
@@ -247,7 +247,7 @@ export default function Review() {
                   onCompositionEnd={() => { composingRef.current = false; }}
                   placeholder="ひらがなで入力..."
                   lang="ja"
-                  className={`h-20 text-4xl text-center font-serif ${
+                  className={`h-24 text-5xl md:text-5xl text-center font-serif ${
                     feedback !== null ? "pointer-events-none" : ""
                   } ${
                     feedback === "correct"
@@ -264,7 +264,7 @@ export default function Review() {
                   <Button
                     type="submit"
                     size="icon"
-                    className="h-20 w-16 bg-primary hover:bg-primary/90 flex-shrink-0"
+                    className="h-24 w-16 bg-primary hover:bg-primary/90 flex-shrink-0"
                     disabled={!answer.trim()}
                   >
                     <ArrowRight className="w-6 h-6" />
