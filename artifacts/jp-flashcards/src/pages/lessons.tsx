@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
@@ -27,10 +27,93 @@ type ApiCard = {
   nextReview: number;
 };
 
+// ---------------------------------------------------------------------------
+// TTS hook — wraps Web Speech API for Japanese pronunciation
+// ---------------------------------------------------------------------------
+function useSpeech() {
+  const [speaking, setSpeaking] = useState(false);
+
+  const speak = useCallback((text: string) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "ja-JP";
+    utterance.rate = 0.85;
+
+    // Prefer a local Japanese voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const jpVoice =
+      voices.find((v) => v.lang.startsWith("ja") && v.localService) ??
+      voices.find((v) => v.lang.startsWith("ja"));
+    if (jpVoice) utterance.voice = jpVoice;
+
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const cancel = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
+  }, []);
+
+  return { speak, cancel, speaking };
+}
+
+// ---------------------------------------------------------------------------
+// Speak button
+// ---------------------------------------------------------------------------
+function SpeakButton({
+  text,
+  speak,
+  speaking,
+}: {
+  text: string;
+  speak: (t: string) => void;
+  speaking: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label="Play pronunciation"
+      onClick={(e) => {
+        e.stopPropagation();
+        speak(text);
+      }}
+      className={`
+        inline-flex items-center justify-center w-10 h-10
+        rounded-full border transition-all
+        ${
+          speaking
+            ? "border-primary bg-primary/10 text-primary animate-pulse"
+            : "border-border bg-background text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5"
+        }
+      `}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        className="w-5 h-5"
+      >
+        <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 0 0 1.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06ZM18.584 5.106a.75.75 0 0 1 1.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 0 1-1.06-1.06 8.25 8.25 0 0 0 0-11.668.75.75 0 0 1 0-1.06Z" />
+        <path d="M15.932 7.757a.75.75 0 0 1 1.061 0 6 6 0 0 1 0 8.486.75.75 0 0 1-1.06-1.061 4.5 4.5 0 0 0 0-6.364.75.75 0 0 1 0-1.06Z" />
+      </svg>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 export default function Lessons() {
   const queryClient = useQueryClient();
   const { data: fetchedCards = [], isLoading } = useGetLessonCards();
   const updateCard = useUpdateCard();
+  const { speak, cancel, speaking } = useSpeech();
 
   const [queue, setQueue] = useState<ApiCard[]>([]);
   const seeded = useRef(false);
@@ -52,6 +135,11 @@ export default function Lessons() {
     () => new Map()
   );
 
+  // Stop any speech when the card or direction changes
+  useEffect(() => {
+    cancel();
+  }, [currentIndex, direction, cancel]);
+
   const currentCard = queue[currentIndex];
   const lesson = currentCard ? getLessonPrompt(currentCard as any, direction) : null;
 
@@ -60,19 +148,13 @@ export default function Lessons() {
 
   const batchFinished = batchSizeRef.current > 0 && queue.length === 0;
 
-  // Progress: count total direction-completions across all cards.
-  // Each card needs 2 directions → total slots = batchSize * 2.
-  // Cards removed from queue are fully done (2 slots each).
-  // Cards still in queue: count their individual completed directions.
+  // Progress: direction-slots (each card × 2 directions)
   const removedCount = batchSizeRef.current - queue.length;
   const inQueueCompleted = queue.reduce((acc, c) => acc + getCardDirs(c.id).size, 0);
   const completedSlots = removedCount * 2 + inQueueCompleted;
   const totalSlots = batchSizeRef.current * 2;
   const progressPct = totalSlots > 0 ? (completedSlots / totalSlots) * 100 : 0;
 
-  // Helper: given an updated completedDirs map, find the next queue index
-  // that still needs work in `dir`, starting after `fromIndex`.
-  // Returns -1 if every card in the queue is already done in that direction.
   const findNextPending = (
     updatedDirs: Map<string, Set<string>>,
     dir: string,
@@ -85,7 +167,7 @@ export default function Lessons() {
       const cardDirs = updatedDirs.get(card.id) ?? new Set<string>();
       if (!cardDirs.has(dir)) return idx;
     }
-    return -1; // all done in this direction
+    return -1;
   };
 
   const handleNext = (knew: boolean) => {
@@ -94,15 +176,12 @@ export default function Lessons() {
     if (knew) {
       const dirs = new Set(getCardDirs(currentCard.id));
       dirs.add(direction);
-      // Build the updated map synchronously so we can inspect it
-      // before React flushes the state update.
       const newCompletedDirs = new Map(completedDirs).set(currentCard.id, dirs);
       setCompletedDirs(newCompletedDirs);
 
       const bothDone = dirs.has("jp-en") && dirs.has("en-jp");
 
       if (bothDone) {
-        // Card fully learned — persist and remove from queue.
         updateCard.mutate(
           {
             id: currentCard.id,
@@ -128,12 +207,9 @@ export default function Lessons() {
         return;
       }
 
-      // One direction done. Find the next card that still needs this direction.
-      // Bug fix: do NOT use (i+1) % len — that would cycle back to already-done cards.
       const nextIdx = findNextPending(newCompletedDirs, direction, currentIndex);
 
       if (nextIdx === -1) {
-        // Every card in the queue is done in current direction — switch direction.
         const nextDir: LessonDirection = direction === "jp-en" ? "en-jp" : "jp-en";
         setDirection(nextDir);
         setCurrentIndex(0);
@@ -145,8 +221,6 @@ export default function Lessons() {
       return;
     }
 
-    // "Needs Work" — cycle to the next card (any card, including already-done ones,
-    // so the user gets a chance to re-see and retry this direction later).
     setCurrentIndex((i) => (i + 1) % queue.length);
     setFlipped(false);
   };
@@ -182,7 +256,9 @@ export default function Lessons() {
               花
             </div>
             <h2 className="text-2xl font-serif font-semibold mb-2">Batch complete!</h2>
-            <p className="text-muted-foreground mb-2">Great work on this batch of {BATCH_SIZE} words.</p>
+            <p className="text-muted-foreground mb-2">
+              Great work on this batch of {BATCH_SIZE} words.
+            </p>
             <p className="text-muted-foreground mb-8">
               {remaining} more word{remaining !== 1 ? "s" : ""} waiting in your next batch.
             </p>
@@ -277,21 +353,42 @@ export default function Lessons() {
 
         {shouldShowSwitchHint && (
           <div className="mb-4 rounded-lg border bg-primary/10 px-4 py-3 text-sm text-primary font-medium">
-            ✓ All words learned in {direction === "jp-en" ? "JP → EN" : "EN → JP"}! Switching to {direction === "jp-en" ? "EN → JP" : "JP → EN"} direction…
+            ✓ All words learned in {direction === "jp-en" ? "JP → EN" : "EN → JP"}! Switching to{" "}
+            {direction === "jp-en" ? "EN → JP" : "JP → EN"} direction…
           </div>
         )}
 
         <Card className="min-h-[450px] flex flex-col justify-between border shadow-sm relative overflow-hidden bg-card">
           <CardContent className="flex-1 flex flex-col items-center justify-center p-8 text-center h-full">
             <div className="flex-1 flex flex-col items-center justify-center">
-              {lesson?.reading && direction === "jp-en" && flipped && (
-                <div className="text-xl text-muted-foreground mb-3 font-serif">
-                  {lesson.reading}
+
+              {/* ── JP→EN: Japanese is the prompt — 🔊 always visible ── */}
+              {direction === "jp-en" && (
+                <>
+                  {flipped && lesson?.reading && (
+                    <div className="text-xl text-muted-foreground mb-3 font-serif">
+                      {lesson.reading}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-center gap-3 mb-8">
+                    <div className="text-6xl md:text-8xl font-serif text-foreground">
+                      {lesson?.prompt}
+                    </div>
+                    <SpeakButton
+                      text={currentCard.japanese}
+                      speak={speak}
+                      speaking={speaking}
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* ── EN→JP: English is the prompt — no 🔊 until answer revealed ── */}
+              {direction === "en-jp" && (
+                <div className="text-6xl md:text-8xl font-serif mb-8 text-foreground">
+                  {lesson?.prompt}
                 </div>
               )}
-              <div className="text-6xl md:text-8xl font-serif mb-8 text-foreground">
-                {lesson?.prompt}
-              </div>
 
               <div className="flex gap-2 mb-4">
                 {(["jp-en", "en-jp"] as const).map((dir) => (
@@ -312,13 +409,33 @@ export default function Lessons() {
               </div>
 
               {flipped && lesson && (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-2">
-                  <div className="text-3xl font-semibold text-primary">{lesson.answer}</div>
-                  {direction === "en-jp" && lesson.reading && (
-                    <div className="text-xl text-muted-foreground font-serif">
-                      {lesson.reading}
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-3">
+                  {direction === "en-jp" ? (
+                    <>
+                      {/* Japanese answer + 🔊 side by side */}
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="text-3xl font-semibold text-primary">
+                          {lesson.answer}
+                        </div>
+                        <SpeakButton
+                          text={currentCard.japanese}
+                          speak={speak}
+                          speaking={speaking}
+                        />
+                      </div>
+                      {lesson.reading && (
+                        <div className="text-xl text-muted-foreground font-serif">
+                          {lesson.reading}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    /* JP→EN answer is English — no 🔊 needed */
+                    <div className="text-3xl font-semibold text-primary">
+                      {lesson.answer}
                     </div>
                   )}
+
                   {currentCard.partOfSpeech && (
                     <div className="text-sm text-muted-foreground uppercase tracking-widest">
                       {currentCard.partOfSpeech}
