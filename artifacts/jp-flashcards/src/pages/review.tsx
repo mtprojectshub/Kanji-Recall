@@ -65,8 +65,13 @@ export default function Review() {
 
   // Count orphaned cards: in lesson queue but have totalReviews=0, meaning
   // they never completed the lesson flow and are invisible to the /due query.
+  // Only flag cards that partially started lessons (lessonDirectionsCompleted has
+  // entries) but never finished — NOT brand-new cards with empty directions.
   const orphanedCards = (lessonCards as any[]).filter(
-    (c) => c.totalReviews === 0
+    (c) =>
+      c.totalReviews === 0 &&
+      Array.isArray(c.lessonDirectionsCompleted) &&
+      c.lessonDirectionsCompleted.length > 0
   );
   const orphanCount = orphanedCards.length;
 
