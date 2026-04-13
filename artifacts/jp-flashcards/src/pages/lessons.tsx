@@ -59,8 +59,34 @@ export default function Lessons() {
   const dirDone = (id: string, dir: string) => getCardDirs(id).has(dir);
 
   const batchFinished = batchSizeRef.current > 0 && queue.length === 0;
-  const completedCount = batchSizeRef.current - queue.length;
-  const progressPct = batchSizeRef.current > 0 ? (completedCount / batchSizeRef.current) * 100 : 0;
+
+  // Progress: count total direction-completions across all cards.
+  // Each card needs 2 directions → total slots = batchSize * 2.
+  // Cards removed from queue are fully done (2 slots each).
+  // Cards still in queue: count their individual completed directions.
+  const removedCount = batchSizeRef.current - queue.length;
+  const inQueueCompleted = queue.reduce((acc, c) => acc + getCardDirs(c.id).size, 0);
+  const completedSlots = removedCount * 2 + inQueueCompleted;
+  const totalSlots = batchSizeRef.current * 2;
+  const progressPct = totalSlots > 0 ? (completedSlots / totalSlots) * 100 : 0;
+
+  // Helper: given an updated completedDirs map, find the next queue index
+  // that still needs work in `dir`, starting after `fromIndex`.
+  // Returns -1 if every card in the queue is already done in that direction.
+  const findNextPending = (
+    updatedDirs: Map<string, Set<string>>,
+    dir: string,
+    fromIndex: number
+  ): number => {
+    const len = queue.length;
+    for (let offset = 1; offset <= len; offset++) {
+      const idx = (fromIndex + offset) % len;
+      const card = queue[idx];
+      const cardDirs = updatedDirs.get(card.id) ?? new Set<string>();
+      if (!cardDirs.has(dir)) return idx;
+    }
+    return -1; // all done in this direction
+  };
 
   const handleNext = (knew: boolean) => {
     if (!currentCard) return;
@@ -68,15 +94,15 @@ export default function Lessons() {
     if (knew) {
       const dirs = new Set(getCardDirs(currentCard.id));
       dirs.add(direction);
-      // Build the updated completedDirs map synchronously so we can
-      // inspect it before React flushes the state update.
+      // Build the updated map synchronously so we can inspect it
+      // before React flushes the state update.
       const newCompletedDirs = new Map(completedDirs).set(currentCard.id, dirs);
       setCompletedDirs(newCompletedDirs);
 
       const bothDone = dirs.has("jp-en") && dirs.has("en-jp");
 
       if (bothDone) {
-        // Card is fully learned in both directions – persist and remove from queue.
+        // Card fully learned — persist and remove from queue.
         updateCard.mutate(
           {
             id: currentCard.id,
@@ -97,40 +123,30 @@ export default function Lessons() {
 
         const newQueue = queue.filter((c) => c.id !== currentCard.id);
         setQueue(newQueue);
-        // Keep index in-bounds; if we removed the last card the queue empties and
-        // the completion screen is rendered automatically.
         setCurrentIndex((i) => Math.min(i, Math.max(0, newQueue.length - 1)));
         setFlipped(false);
         return;
       }
 
-      // BUG FIX 1 & 2: One direction done — advance to the next card.
-      // Then check whether every card in the queue is now done in the current
-      // direction (using the freshly-built map, not stale React state).
-      // If so, automatically flip to the opposite direction.
-      const allDoneInCurrentDir = queue.every((c) => {
-        const cardDirs =
-          c.id === currentCard.id
-            ? dirs
-            : (newCompletedDirs.get(c.id) ?? new Set<string>());
-        return cardDirs.has(direction);
-      });
+      // One direction done. Find the next card that still needs this direction.
+      // Bug fix: do NOT use (i+1) % len — that would cycle back to already-done cards.
+      const nextIdx = findNextPending(newCompletedDirs, direction, currentIndex);
 
-      if (allDoneInCurrentDir) {
-        // BUG FIX 2: Auto-switch direction and restart from the first card.
+      if (nextIdx === -1) {
+        // Every card in the queue is done in current direction — switch direction.
         const nextDir: LessonDirection = direction === "jp-en" ? "en-jp" : "jp-en";
         setDirection(nextDir);
         setCurrentIndex(0);
       } else {
-        // BUG FIX 1: Simply move to the next card in the queue.
-        setCurrentIndex((i) => (i + 1) % queue.length);
+        setCurrentIndex(nextIdx);
       }
 
       setFlipped(false);
       return;
     }
 
-    // "Needs Work" — cycle to the next card so it comes back around.
+    // "Needs Work" — cycle to the next card (any card, including already-done ones,
+    // so the user gets a chance to re-see and retry this direction later).
     setCurrentIndex((i) => (i + 1) % queue.length);
     setFlipped(false);
   };
@@ -208,12 +224,10 @@ export default function Lessons() {
 
   if (!currentCard) return null;
 
-  const batchDirection = direction;
-  const currentBatchComplete = batchFinished;
   const allCardsDoneInCurrentDirection = queue.every((card) =>
-    dirDone(card.id, batchDirection)
+    dirDone(card.id, direction)
   );
-  const shouldShowSwitchHint = allCardsDoneInCurrentDirection && !currentBatchComplete;
+  const shouldShowSwitchHint = allCardsDoneInCurrentDirection && !batchFinished;
 
   return (
     <Layout>
@@ -257,13 +271,13 @@ export default function Lessons() {
         <div className="flex items-center gap-3 mb-5">
           <Progress value={progressPct} className="h-2 flex-1" />
           <span className="text-sm font-medium text-muted-foreground tabular-nums whitespace-nowrap">
-            {completedCount} / {batchSizeRef.current}
+            {completedSlots} / {totalSlots}
           </span>
         </div>
 
         {shouldShowSwitchHint && (
           <div className="mb-4 rounded-lg border bg-primary/10 px-4 py-3 text-sm text-primary font-medium">
-            ✓ All words learned in {batchDirection === "jp-en" ? "JP → EN" : "EN → JP"}! Switching to {batchDirection === "jp-en" ? "EN → JP" : "JP → EN"} direction…
+            ✓ All words learned in {direction === "jp-en" ? "JP → EN" : "EN → JP"}! Switching to {direction === "jp-en" ? "EN → JP" : "JP → EN"} direction…
           </div>
         )}
 
