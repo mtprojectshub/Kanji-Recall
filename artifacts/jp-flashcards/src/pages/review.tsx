@@ -8,20 +8,99 @@ import { Input } from "@/components/ui/input";
 import { getNextStage, getStageName, calculateNextReview, SRSStage } from "@/lib/srs";
 import {
   useGetDueCards,
+  useGetLessonCards,
   useUpdateCard,
   useCreateSession,
   getGetDueCardsQueryKey,
   getGetDashboardQueryKey,
   getListSessionsQueryKey,
+  getGetLessonCardsQueryKey,
 } from "@workspace/api-client-react";
-import { Check, ArrowRight, X } from "lucide-react";
+import { Check, ArrowRight, X, AlertCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+
+// ---------------------------------------------------------------------------
+// Rescue banner — shown when there are cards stuck in limbo
+// (lessonComplete=false, totalReviews=0) that should be in the review queue
+// ---------------------------------------------------------------------------
+function RescueBanner({
+  count,
+  onRescue,
+  rescuing,
+}: {
+  count: number;
+  onRescue: () => void;
+  rescuing: boolean;
+}) {
+  return (
+    <div className="mb-6 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+      <div className="flex-1">
+        <span className="font-medium">
+          {count} card{count !== 1 ? "s" : ""} stuck in limbo.
+        </span>{" "}
+        {count === 1 ? "It was" : "They were"} added but never fully graduated
+        from lessons. Click to move {count === 1 ? "it" : "them"} into your
+        review queue now.
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        className="flex-shrink-0 border-amber-400 text-amber-900 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+        onClick={onRescue}
+        disabled={rescuing}
+      >
+        {rescuing ? "Rescuing…" : `Rescue ${count === 1 ? "card" : "cards"}`}
+      </Button>
+    </div>
+  );
+}
 
 export default function Review() {
   const queryClient = useQueryClient();
   const { data: serverCards = [], isLoading } = useGetDueCards();
+  const { data: lessonCards = [] } = useGetLessonCards();
   const updateCard = useUpdateCard();
   const createSession = useCreateSession();
+
+  // Count orphaned cards: in lesson queue but have totalReviews=0, meaning
+  // they never completed the lesson flow and are invisible to the /due query.
+  const orphanedCards = (lessonCards as any[]).filter(
+    (c) => c.totalReviews === 0
+  );
+  const orphanCount = orphanedCards.length;
+
+  const [rescuing, setRescuing] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  const handleRescue = async () => {
+    setRescuing(true);
+    try {
+      // Patch each orphaned card to lessonComplete=true, nextReview=now
+      await Promise.all(
+        orphanedCards.map((card) =>
+          updateCard.mutateAsync({
+            id: card.id,
+            data: {
+              lessonComplete: true,
+              nextReview: Date.now(),
+              srsStage: "apprentice1",
+            },
+          })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: getGetDueCardsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetLessonCardsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+      setDismissed(true);
+    } catch (err) {
+      console.error("Rescue failed", err);
+    } finally {
+      setRescuing(false);
+    }
+  };
+
+  const showRescueBanner = orphanCount > 0 && !dismissed;
 
   // Freeze the card list at mount so background refetches don't shuffle cards mid-session
   const [cards] = useState(() => serverCards);
@@ -34,7 +113,6 @@ export default function Review() {
   const [sessionIncorrect, setSessionIncorrect] = useState(0);
   const [sessionSaved, setSessionSaved] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Track IME composition to avoid submitting mid-composition
   const composingRef = useRef(false);
 
   const saveSession = (correct: number, incorrect: number, total: number) => {
@@ -66,6 +144,15 @@ export default function Review() {
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in">
+          {showRescueBanner && (
+            <div className="w-full max-w-md mb-8">
+              <RescueBanner
+                count={orphanCount}
+                onRescue={handleRescue}
+                rescuing={rescuing}
+              />
+            </div>
+          )}
           <div className="bg-primary/10 text-primary w-24 h-24 rounded-full flex items-center justify-center mb-6 text-4xl font-serif">
             花
           </div>
@@ -87,6 +174,10 @@ export default function Review() {
   }
 
   if (currentIndex >= frozenCards.length) {
+    const total = sessionCorrect + sessionIncorrect;
+    saveSession(sessionCorrect, sessionIncorrect, total);
+    const pct = total > 0 ? Math.round((sessionCorrect / total) * 100) : 0;
+
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in slide-in-from-bottom-8 duration-500">
@@ -95,143 +186,129 @@ export default function Review() {
           </div>
           <h2 className="text-3xl font-serif font-bold mb-2">Review Session Complete</h2>
           <p className="text-muted-foreground mb-8">
-            You reviewed {frozenCards.length} cards with{" "}
-            {frozenCards.length > 0
-              ? Math.round((sessionCorrect / frozenCards.length) * 100)
-              : 0}
-            % accuracy.
+            {sessionCorrect} / {total} correct ({pct}%)
           </p>
-          <Button asChild size="lg">
-            <Link href="/">Return Home</Link>
-          </Button>
+          <div className="flex gap-4">
+            <Button asChild variant="outline">
+              <Link href="/">Back to Dashboard</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/lessons">Learn New Words</Link>
+            </Button>
+          </div>
         </div>
       </Layout>
     );
   }
 
-  const card = frozenCards[currentIndex];
-  const progress = (currentIndex / frozenCards.length) * 100;
+  const currentCard = frozenCards[currentIndex] as any;
+  const totalCards = frozenCards.length;
+  const progressPct = (currentIndex / totalCards) * 100;
+  const currentStageName = getStageName(currentCard.srsStage as SRSStage);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (feedback !== null) return;
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (composingRef.current) return;
-    if (!answer.trim()) return;
+    if (feedback !== null || !answer.trim()) return;
 
-    const typed = answer.trim();
-    // Accept either the kanji form or the hiragana reading
-    const isCorrect =
-      typed === card.japanese.trim() ||
-      (card.reading.trim() !== "" && typed === card.reading.trim());
+    const normalise = (s: string) =>
+      s.trim().toLowerCase().replace(/\s+/g, " ");
+    const correct = normalise(answer) === normalise(currentCard.reading) ||
+      normalise(answer) === normalise(currentCard.japanese);
+    const result = correct ? "correct" : "incorrect";
+    setFeedback(result);
 
-    setFeedback(isCorrect ? "correct" : "incorrect");
-
-    const newCorrect = sessionCorrect + (isCorrect ? 1 : 0);
-    const newIncorrect = sessionIncorrect + (!isCorrect ? 1 : 0);
-    if (isCorrect) setSessionCorrect(newCorrect);
-    else setSessionIncorrect(newIncorrect);
-
-    const nextStage = getNextStage(card.srsStage as SRSStage, isCorrect);
+    const nextStage = getNextStage(currentCard.srsStage as SRSStage, correct);
     const nextReview = calculateNextReview(nextStage);
 
     updateCard.mutate({
-      id: card.id,
+      id: currentCard.id,
       data: {
         srsStage: nextStage,
         nextReview,
-        totalReviews: card.totalReviews + 1,
-        correctReviews: card.correctReviews + (isCorrect ? 1 : 0),
-        incorrectReviews: card.incorrectReviews + (!isCorrect ? 1 : 0),
-        streak: isCorrect ? card.streak + 1 : 0,
+        totalReviews: (currentCard.totalReviews ?? 0) + 1,
+        correctReviews: (currentCard.correctReviews ?? 0) + (correct ? 1 : 0),
+        incorrectReviews: (currentCard.incorrectReviews ?? 0) + (!correct ? 1 : 0),
+        streak: correct ? (currentCard.streak ?? 0) + 1 : 0,
         lastReviewed: Date.now(),
       },
     });
 
-    // If this was the last card, save the session now
-    if (currentIndex === frozenCards.length - 1) {
-      saveSession(newCorrect, newIncorrect, frozenCards.length);
-    }
+    if (correct) setSessionCorrect((n) => n + 1);
+    else setSessionIncorrect((n) => n + 1);
   };
 
   const handleNext = () => {
-    setFeedback(null);
     setAnswer("");
-    setCurrentIndex((prev) => prev + 1);
+    setFeedback(null);
+    setCurrentIndex((i) => i + 1);
     setTimeout(() => inputRef.current?.focus(), 10);
   };
-
-  const currentStageName = getStageName(card.srsStage as SRSStage);
-  const nextStageForDisplay = getNextStage(card.srsStage as SRSStage, feedback === "correct");
-  const nextStageName = getStageName(nextStageForDisplay);
 
   return (
     <Layout>
       <div className="max-w-2xl mx-auto">
-        <div className="mb-6 flex items-center gap-4">
-          <div className="flex-1">
-            <Progress value={progress} className="h-2" />
-          </div>
+        {showRescueBanner && (
+          <RescueBanner
+            count={orphanCount}
+            onRescue={handleRescue}
+            rescuing={rescuing}
+          />
+        )}
+
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-serif font-bold">Reviews</h1>
           <div className="text-sm font-medium text-muted-foreground">
-            {currentIndex} / {frozenCards.length}
+            {currentIndex + 1} / {totalCards}
           </div>
         </div>
 
-        <Card
-          className={`min-h-[480px] flex flex-col justify-between border shadow-sm relative overflow-hidden transition-colors duration-300 ${
-            feedback === "correct"
-              ? "bg-green-50 border-green-400"
-              : feedback === "incorrect"
-              ? "bg-destructive/10 border-destructive"
-              : "bg-card"
-          }`}
-        >
-          <CardContent className="flex-1 flex flex-col items-center justify-center p-8 text-center h-full relative">
+        <div className="flex items-center gap-3 mb-5">
+          <Progress value={progressPct} className="h-2 flex-1" />
+          <span className="text-sm font-medium text-muted-foreground tabular-nums whitespace-nowrap">
+            {currentIndex} / {totalCards}
+          </span>
+        </div>
 
-            {/* SRS stage change banner */}
+        <Card className="min-h-[450px] flex flex-col justify-between border shadow-sm relative overflow-hidden bg-card">
+          <CardContent className="flex-1 flex flex-col items-center justify-center p-8 text-center h-full relative">
             {feedback !== null && (
-              <div className="absolute top-6 left-0 right-0 flex justify-center animate-in fade-in slide-in-from-top-4">
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="bg-background/80 backdrop-blur-sm px-4 py-2 rounded-full text-sm font-medium shadow-sm flex items-center gap-2">
                   <span className="text-muted-foreground">{currentStageName}</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span className="text-muted-foreground">→</span>
                   <span className={feedback === "correct" ? "text-green-600" : "text-destructive"}>
-                    {nextStageName}
+                    {getStageName(getNextStage(currentCard.srsStage as SRSStage, feedback === "correct"))}
                   </span>
                 </div>
               </div>
             )}
 
-            <div className="flex-1 flex flex-col items-center justify-center w-full">
-              {/* Part of speech label */}
-              {card.partOfSpeech && (
-                <div className="text-xs text-muted-foreground uppercase tracking-widest mb-3">
-                  {card.partOfSpeech}
-                </div>
-              )}
-
-              {/* English prompt — shown throughout */}
-              <div className="text-4xl md:text-5xl font-serif font-semibold mb-6 text-foreground">
-                {card.english}
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <div className="text-xs text-muted-foreground uppercase tracking-widest mb-3">
+                What is the reading?
               </div>
 
-              {/* Correct Japanese answer — revealed after submission */}
+              <div className="text-4xl md:text-5xl font-serif font-semibold mb-6 text-foreground">
+                {currentCard.english}
+              </div>
+
               {feedback !== null && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-1 mb-4">
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 text-center">
                   <div className="text-4xl font-serif font-bold text-foreground">
-                    {card.japanese}
+                    {currentCard.japanese}
                   </div>
-                  {card.reading && card.reading !== card.japanese && (
+                  {currentCard.reading && (
                     <div className="text-xl text-muted-foreground font-serif">
-                      {card.reading}
+                      {currentCard.reading}
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Wrong answer — show what the user typed */}
-              {feedback === "incorrect" && (
-                <div className="flex items-center gap-2 text-destructive animate-in fade-in mt-2">
-                  <X className="w-4 h-4 flex-shrink-0" />
-                  <span className="text-lg font-serif">{answer}</span>
+                  {feedback === "incorrect" && (
+                    <div className="flex items-center gap-2 text-destructive animate-in fade-in mt-2">
+                      <X className="w-4 h-4" />
+                      <span className="text-lg font-serif">{answer}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
