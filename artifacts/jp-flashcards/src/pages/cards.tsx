@@ -80,7 +80,7 @@ export default function Cards() {
   };
 
   const stageFiltered = stageFilter
-    ? cards.filter((c) => c.srsStage.startsWith(stageFilter))
+    ? cards.filter((c) => c.srsStage.startsWith(stageFilter) && (c as any).lessonComplete)
     : cards;
 
   const filteredCards = stageFiltered
