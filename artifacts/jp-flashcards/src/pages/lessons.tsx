@@ -68,11 +68,15 @@ export default function Lessons() {
     if (knew) {
       const dirs = new Set(getCardDirs(currentCard.id));
       dirs.add(direction);
-      setCompletedDirs(new Map(completedDirs).set(currentCard.id, dirs));
+      // Build the updated completedDirs map synchronously so we can
+      // inspect it before React flushes the state update.
+      const newCompletedDirs = new Map(completedDirs).set(currentCard.id, dirs);
+      setCompletedDirs(newCompletedDirs);
 
       const bothDone = dirs.has("jp-en") && dirs.has("en-jp");
 
       if (bothDone) {
+        // Card is fully learned in both directions – persist and remove from queue.
         updateCard.mutate(
           {
             id: currentCard.id,
@@ -93,15 +97,40 @@ export default function Lessons() {
 
         const newQueue = queue.filter((c) => c.id !== currentCard.id);
         setQueue(newQueue);
+        // Keep index in-bounds; if we removed the last card the queue empties and
+        // the completion screen is rendered automatically.
         setCurrentIndex((i) => Math.min(i, Math.max(0, newQueue.length - 1)));
         setFlipped(false);
         return;
+      }
+
+      // BUG FIX 1 & 2: One direction done — advance to the next card.
+      // Then check whether every card in the queue is now done in the current
+      // direction (using the freshly-built map, not stale React state).
+      // If so, automatically flip to the opposite direction.
+      const allDoneInCurrentDir = queue.every((c) => {
+        const cardDirs =
+          c.id === currentCard.id
+            ? dirs
+            : (newCompletedDirs.get(c.id) ?? new Set<string>());
+        return cardDirs.has(direction);
+      });
+
+      if (allDoneInCurrentDir) {
+        // BUG FIX 2: Auto-switch direction and restart from the first card.
+        const nextDir: LessonDirection = direction === "jp-en" ? "en-jp" : "jp-en";
+        setDirection(nextDir);
+        setCurrentIndex(0);
+      } else {
+        // BUG FIX 1: Simply move to the next card in the queue.
+        setCurrentIndex((i) => (i + 1) % queue.length);
       }
 
       setFlipped(false);
       return;
     }
 
+    // "Needs Work" — cycle to the next card so it comes back around.
     setCurrentIndex((i) => (i + 1) % queue.length);
     setFlipped(false);
   };
@@ -233,8 +262,8 @@ export default function Lessons() {
         </div>
 
         {shouldShowSwitchHint && (
-          <div className="mb-4 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-            This batch is done in {batchDirection === "jp-en" ? "JP → EN" : "EN → JP"}. Switch to the opposite direction to continue.
+          <div className="mb-4 rounded-lg border bg-primary/10 px-4 py-3 text-sm text-primary font-medium">
+            ✓ All words learned in {batchDirection === "jp-en" ? "JP → EN" : "EN → JP"}! Switching to {batchDirection === "jp-en" ? "EN → JP" : "JP → EN"} direction…
           </div>
         )}
 
