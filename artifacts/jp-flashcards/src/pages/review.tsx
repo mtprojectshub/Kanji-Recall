@@ -120,6 +120,21 @@ export default function Review() {
   const inputRef = useRef<HTMLInputElement>(null);
   const composingRef = useRef(false);
 
+  // Prevent the Next/Continue button from being triggered by tab-switch focus
+  // restoration or accidental double-tap. The button is disabled for 400ms
+  // after feedback is shown, which is long enough for a tab switch to settle
+  // but imperceptible to a deliberate click.
+  const [nextReady, setNextReady] = useState(false);
+  useEffect(() => {
+    if (feedback !== null) {
+      setNextReady(false);
+      const t = setTimeout(() => setNextReady(true), 400);
+      return () => clearTimeout(t);
+    } else {
+      setNextReady(false);
+    }
+  }, [feedback]);
+
   const saveSession = (correct: number, incorrect: number, total: number) => {
     if (sessionSaved) return;
     setSessionSaved(true);
@@ -362,7 +377,7 @@ export default function Review() {
                       ? "bg-green-600 text-white hover:bg-green-700"
                       : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   }`}
-                  autoFocus
+                  disabled={!nextReady}
                 >
                   {feedback === "correct" ? "Next" : "Continue"}
                 </Button>
